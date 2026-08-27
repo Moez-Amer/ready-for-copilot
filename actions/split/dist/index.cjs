@@ -93942,6 +93942,15 @@ function refusalReason(readiness) {
       "Breaking up an issue that describes code which isn't there would just produce sub-issues carrying the same problem. Correct the references, then comment `/split` again."
     ].join("\n");
   }
+  if (readiness.raw.scope.pass && readiness.raw.scope.confidence >= CONFIDENCE_THRESHOLD) {
+    return [
+      "I'm not splitting this one \u2014 it's already a single bounded change.",
+      "",
+      `_${readiness.raw.scope.rationale}_`,
+      "",
+      "Splitting it would just restate it as a sub-issue. Work it directly, or hand it to an agent if it carries the `agent-ready` label."
+    ].join("\n");
+  }
   if (readiness.confident && readiness.score <= 1) {
     const suggestion = readiness.suggestion.trim();
     return [
@@ -93999,8 +94008,8 @@ async function run() {
     info("Comment is on a pull request, not an issue. Nothing to split.");
     return;
   }
-  if (!String(comment.body ?? "").trim().toLowerCase().startsWith(TRIGGER)) {
-    info(`Comment does not start with ${TRIGGER}. Nothing to do.`);
+  if (!new RegExp(`(^|\\s)${TRIGGER}\\b`, "i").test(String(comment.body ?? ""))) {
+    info(`Comment does not contain ${TRIGGER}. Nothing to do.`);
     return;
   }
   const title = issue3.title ?? "";
@@ -94028,12 +94037,12 @@ ${body}`
     return;
   }
   const subIssues = await decomposeIssue({ title, body, repoContext: context3 });
-  if (subIssues.length === 0) {
+  if (subIssues.length < 2) {
     await octokit.rest.issues.createComment({
       owner,
       repo,
       issue_number: issue3.number,
-      body: "I couldn't find a sensible way to split this issue. It may already be small enough to work on directly."
+      body: "I couldn't find a sensible way to split this issue \u2014 it looks like a single piece of work already, so splitting it would just restate it. Work it directly."
     });
     return;
   }

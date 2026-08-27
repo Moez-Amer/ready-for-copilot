@@ -11,7 +11,7 @@ permissions:
 jobs:
   split:
     # Cheap guard so the runner only spins up for actual /split comments.
-    if: ${{ !github.event.issue.pull_request && startsWith(github.event.comment.body, '/split') }}
+    if: ${{ !github.event.issue.pull_request && contains(github.event.comment.body, '/split') }}
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

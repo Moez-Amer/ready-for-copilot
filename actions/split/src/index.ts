@@ -2,6 +2,7 @@ import * as core from "@actions/core";
 import * as github from "@actions/github";
 import { buildRepoContext } from "@issue-triage/repo-context";
 import {
+  CONFIDENCE_THRESHOLD,
   classifyForDelegation,
   decomposeIssue,
   MAX_SUB_ISSUES,
@@ -154,6 +155,18 @@ function refusalReason(readiness: ReadinessResult): string | null {
       "Breaking up an issue that describes code which isn't there would just produce sub-issues carrying the same problem. Correct the references, then comment `/split` again.",
     ].join("\n");
   }
+  // The scope signal asks precisely whether this is one bounded change rather
+  // than several bundled together. When it passes, there are no seams to split
+  // along, and decomposing anyway just clones the parent into a sub-issue.
+  if (readiness.raw.scope.pass && readiness.raw.scope.confidence >= CONFIDENCE_THRESHOLD) {
+    return [
+      "I'm not splitting this one — it's already a single bounded change.",
+      "",
+      `_${readiness.raw.scope.rationale}_`,
+      "",
+      "Splitting it would just restate it as a sub-issue. Work it directly, or hand it to an agent if it carries the `agent-ready` label.",
+    ].join("\n");
+  }
   if (readiness.confident && readiness.score <= 1) {
     const suggestion = readiness.suggestion.trim();
     return [
@@ -233,8 +246,11 @@ async function run(): Promise<void> {
     core.info("Comment is on a pull request, not an issue. Nothing to split.");
     return;
   }
-  if (!String(comment.body ?? "").trim().toLowerCase().startsWith(TRIGGER)) {
-    core.info(`Comment does not start with ${TRIGGER}. Nothing to do.`);
+  // GitHub's slash-command autocomplete fights you while typing `/split`, so
+  // accept it as a standalone word anywhere in the comment rather than only at
+  // the very start.
+  if (!new RegExp(`(^|\\s)${TRIGGER}\\b`, "i").test(String(comment.body ?? ""))) {
+    core.info(`Comment does not contain ${TRIGGER}. Nothing to do.`);
     return;
   }
 
@@ -270,12 +286,14 @@ async function run(): Promise<void> {
 
   // Pass 1 -- decompose. Token-heaviest call in the pipeline.
   const subIssues = await decomposeIssue({ title, body, repoContext: context });
-  if (subIssues.length === 0) {
+  // One sub-issue is a copy of the parent, not a split. Refuse rather than
+  // leave behind a duplicate that has to be closed by hand.
+  if (subIssues.length < 2) {
     await octokit.rest.issues.createComment({
       owner,
       repo,
       issue_number: issue.number,
-      body: "I couldn't find a sensible way to split this issue. It may already be small enough to work on directly.",
+      body: "I couldn't find a sensible way to split this issue — it looks like a single piece of work already, so splitting it would just restate it. Work it directly.",
     });
     return;
   }
