@@ -35,7 +35,7 @@ async function run(): Promise<void> {
   await mkdir(dirname(output), { recursive: true });
   await writeFile(output, html, "utf8");
 
-  core.info(`Wrote ${output}: ${summary.scored} triaged, ${summary.untracked} untracked.`);
+  core.info(`Wrote ${output}: ${summary.scored} scored, ${summary.untracked} unscored.`);
   core.setOutput("path", output);
   core.setOutput("scored", String(summary.scored));
 }

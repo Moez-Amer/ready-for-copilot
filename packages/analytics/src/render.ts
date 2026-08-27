@@ -64,7 +64,7 @@ export function renderReport(summary: Summary, repo: string): string {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Issue triage — ${escapeHtml(repo)}</title>
+<title>Issue readiness — ${escapeHtml(repo)}</title>
 <style>
   :root {
     color-scheme: light dark;
@@ -113,15 +113,15 @@ export function renderReport(summary: Summary, repo: string): string {
 </head>
 <body>
 <main>
-  <h1>Issue triage</h1>
+  <h1>Issue readiness</h1>
   <p class="sub">${escapeHtml(repo)} · generated ${escapeHtml(summary.generatedAt.slice(0, 16).replace("T", " "))} UTC</p>
 
   ${verdict(summary)}
 
   <div class="cards">
-    <div class="card"><div class="big">${summary.scored}</div><div class="cap">issues triaged</div></div>
+    <div class="card"><div class="big">${summary.scored}</div><div class="cap">issues scored</div></div>
     <div class="card"><div class="big">${share === null ? "—" : `${Math.round(share * 100)}%`}</div><div class="cap">of split work is delegatable</div></div>
-    <div class="card"><div class="big">${summary.untracked}</div><div class="cap">not yet triaged</div></div>
+    <div class="card"><div class="big">${summary.untracked}</div><div class="cap">not yet scored</div></div>
   </div>
 
   <h2>Where issues land</h2>
@@ -138,7 +138,7 @@ export function renderReport(summary: Summary, repo: string): string {
   <footer>
     Median time-to-close covers closed issues only, so a label with few
     closures shows a noisy figure. Issues opened before this tool was adopted
-    carry no label and appear only in the &ldquo;not yet triaged&rdquo; count.
+    carry no label and appear only in the &ldquo;not yet scored&rdquo; count.
   </footer>
 </main>
 </body>

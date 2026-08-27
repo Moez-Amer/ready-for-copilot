@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Generate the triage report locally, without deploying anything.
+// Generate the readiness report locally, without deploying anything.
 //   npm run report -- owner/repo
 // Requires the gh CLI, authenticated.
 import { execFileSync } from "node:child_process";
@@ -13,7 +13,7 @@ if (!repo || !repo.includes("/")) {
   process.exit(1);
 }
 
-const out = resolve(process.argv[3] ?? "triage-report.html");
+const out = resolve(process.argv[3] ?? "readiness-report.html");
 
 let raw;
 try {
@@ -49,5 +49,5 @@ const issues = raw
 
 const summary = summarise(issues);
 writeFileSync(out, renderReport(summary, repo), "utf8");
-console.log(`${issues.length} issues -> ${summary.scored} triaged, ${summary.untracked} untriaged`);
+console.log(`${issues.length} issues -> ${summary.scored} scored, ${summary.untracked} unscored`);
 console.log(`Wrote ${out}`);

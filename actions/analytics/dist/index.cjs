@@ -24284,7 +24284,7 @@ function renderReport(summary2, repo) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Issue triage \u2014 ${escapeHtml(repo)}</title>
+<title>Issue readiness \u2014 ${escapeHtml(repo)}</title>
 <style>
   :root {
     color-scheme: light dark;
@@ -24333,15 +24333,15 @@ function renderReport(summary2, repo) {
 </head>
 <body>
 <main>
-  <h1>Issue triage</h1>
+  <h1>Issue readiness</h1>
   <p class="sub">${escapeHtml(repo)} \xB7 generated ${escapeHtml(summary2.generatedAt.slice(0, 16).replace("T", " "))} UTC</p>
 
   ${verdict(summary2)}
 
   <div class="cards">
-    <div class="card"><div class="big">${summary2.scored}</div><div class="cap">issues triaged</div></div>
+    <div class="card"><div class="big">${summary2.scored}</div><div class="cap">issues scored</div></div>
     <div class="card"><div class="big">${share === null ? "\u2014" : `${Math.round(share * 100)}%`}</div><div class="cap">of split work is delegatable</div></div>
-    <div class="card"><div class="big">${summary2.untracked}</div><div class="cap">not yet triaged</div></div>
+    <div class="card"><div class="big">${summary2.untracked}</div><div class="cap">not yet scored</div></div>
   </div>
 
   <h2>Where issues land</h2>
@@ -24358,7 +24358,7 @@ function renderReport(summary2, repo) {
   <footer>
     Median time-to-close covers closed issues only, so a label with few
     closures shows a noisy figure. Issues opened before this tool was adopted
-    carry no label and appear only in the &ldquo;not yet triaged&rdquo; count.
+    carry no label and appear only in the &ldquo;not yet scored&rdquo; count.
   </footer>
 </main>
 </body>
@@ -24392,7 +24392,7 @@ async function run() {
   const html = renderReport(summary2, `${owner}/${repo}`);
   await (0, import_promises.mkdir)((0, import_node_path.dirname)(output), { recursive: true });
   await (0, import_promises.writeFile)(output, html, "utf8");
-  info(`Wrote ${output}: ${summary2.scored} triaged, ${summary2.untracked} untracked.`);
+  info(`Wrote ${output}: ${summary2.scored} scored, ${summary2.untracked} unscored.`);
   setOutput("path", output);
   setOutput("scored", String(summary2.scored));
 }

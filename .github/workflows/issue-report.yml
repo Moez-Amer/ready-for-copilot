@@ -1,4 +1,4 @@
-name: Issue Triage Report
+name: Issue Readiness Report
 
 on:
   schedule:

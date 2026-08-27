@@ -1,5 +1,5 @@
-name: "Issue Triage Report"
-description: "Generates a static report on how issues are being triaged and whether the rubric predicts anything."
+name: "Issue Readiness Report"
+description: "Generates a static report on how issues are scoring and whether the rubric predicts anything."
 inputs:
   github-token:
     description: "Token used to read issues."

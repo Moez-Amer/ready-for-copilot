@@ -72,7 +72,7 @@ The report covers whichever repository it runs in, so each repository using this
 To see one without deploying anything, generate it locally:
 
 ```bash
-npm run report -- owner/repo        # writes triage-report.html
+npm run report -- owner/repo        # writes readiness-report.html
 ```
 
 ## Setup
@@ -140,10 +140,10 @@ jobs:
           aws-region: us-east-1
 ```
 
-`.github/workflows/issue-report.yml` (optional — the triage report):
+`.github/workflows/issue-report.yml` (optional — the readiness report):
 
 ```yaml
-name: Issue Triage Report
+name: Issue Readiness Report
 
 on:
   schedule:
