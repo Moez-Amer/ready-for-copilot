@@ -49,6 +49,8 @@ Then score two additional signals that are about safety, not clarity:
   Do not reason your way past this list. "It's only a rename", "this migration is trivial", and "the interface stays the same" are not exemptions — the category is what matters, because these are the changes where an unreviewed mistake is expensive to undo.
   One narrow exception: a routine version bump of a dependency already in use (same interface, patch/minor update) does NOT fail this signal. The risk there is changing *what* the code depends on, not maintaining an existing pin.
 
+If repository context is included below, use it when judging blastRadius: check whether the files this sub-issue actually names are auth, migration, billing, or public-API files, rather than inferring from their names. A file called \`helper.ts\` that holds session logic is auth; a file called \`auth-colors.css\` is not.
+
 Bias toward failing taskPattern or blastRadius when you are unsure — a false "safe" here means an agent ships an unreviewed change into something sensitive.
 
 On confidence: confidence measures how sure you are of the pass/fail call itself, NOT how good or safe the sub-issue is. A signal that plainly fails is a CONFIDENT fail (0.8-1.0), not an uncertain one. Reserve low confidence (below 0.6) for when you genuinely cannot tell either way, such as a sub-issue referring to files or context you cannot see.

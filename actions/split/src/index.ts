@@ -1,10 +1,13 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
+import { buildRepoContext } from "@issue-triage/repo-context";
 import {
   classifyForDelegation,
   decomposeIssue,
   MAX_SUB_ISSUES,
+  scoreReadiness,
   type DelegationResult,
+  type ReadinessResult,
   type SubIssue,
 } from "@issue-triage/scorer";
 
@@ -136,6 +139,36 @@ async function assignToCopilot(
   }
 }
 
+/**
+ * Splitting a vague or fictional issue just multiplies the problem: you get
+ * vague or fictional sub-issues, and now the board is worse than before. Score
+ * the parent first and decline rather than decompose something unsplittable.
+ */
+function refusalReason(readiness: ReadinessResult): string | null {
+  if (readiness.grounded === false) {
+    return [
+      "I'm not splitting this one yet.",
+      "",
+      `⚠️ **This doesn't match the code:** ${readiness.groundingRationale}`,
+      "",
+      "Breaking up an issue that describes code which isn't there would just produce sub-issues carrying the same problem. Correct the references, then comment `/split` again.",
+    ].join("\n");
+  }
+  if (readiness.confident && readiness.score <= 1) {
+    const suggestion = readiness.suggestion.trim();
+    return [
+      `I'm not splitting this one yet — it scores **${readiness.score}/4** on agent-readiness, which isn't enough to break into anything useful.`,
+      "",
+      suggestion,
+      "",
+      "Sharpen the issue, then comment `/split` again.",
+    ]
+      .filter(Boolean)
+      .join("\n");
+  }
+  return null;
+}
+
 function formatSummary(created: CreatedSubIssue[], copilotAvailable: boolean): string {
   const mechanical = created.filter((c) => c.result.classification === "mechanical");
   const judgement = created.filter((c) => c.result.classification === "judgement");
@@ -148,12 +181,7 @@ function formatSummary(created: CreatedSubIssue[], copilotAvailable: boolean): s
   lines.push(
     mechanical.length
       ? mechanical
-          .map(
-            (c) =>
-              `- #${c.number} — ${c.subIssue.title}${
-                c.assignedToCopilot ? "" : " _(assignment failed; unassigned)_"
-              }`,
-          )
+          .map((c) => `- #${c.number}${c.assignedToCopilot ? "" : " _(assignment failed; unassigned)_"}`)
           .join("\n")
       : "- _none_",
   );
@@ -167,7 +195,7 @@ function formatSummary(created: CreatedSubIssue[], copilotAvailable: boolean): s
               : !c.result.raw.taskPattern.pass
                 ? c.result.raw.taskPattern.rationale
                 : `scored ${c.result.layerAScore}/4 on readiness`;
-            return `- #${c.number} — ${c.subIssue.title}\n  _${reason}_`;
+            return `- #${c.number}\n  _${reason}_`;
           })
           .join("\n")
       : "- _none_",
@@ -210,11 +238,38 @@ async function run(): Promise<void> {
     return;
   }
 
-  // Pass 1 -- decompose. Token-heaviest call in the pipeline.
-  const subIssues = await decomposeIssue({
-    title: issue.title ?? "",
-    body: issue.body ?? "",
+  const title = issue.title ?? "";
+  const body = issue.body ?? "";
+
+  // Read what this repository actually contains, once. Decompose uses it to
+  // split along real seams instead of guessing at structure, and classify uses
+  // it to judge blast radius against real files rather than filenames.
+  const repoContext = await buildRepoContext({
+    octokit,
+    owner,
+    repo,
+    issueText: `${title}\n${body}`,
   });
+  if (!repoContext) {
+    core.warning("Could not read repository context; splitting on issue text alone.");
+  }
+  const context = repoContext ?? undefined;
+
+  // Gate before decomposing -- see refusalReason.
+  const refusal = refusalReason(await scoreReadiness({ title, body, repoContext: context }));
+  if (refusal) {
+    await octokit.rest.issues.createComment({
+      owner,
+      repo,
+      issue_number: issue.number,
+      body: refusal,
+    });
+    core.info("Declined to split: parent issue isn't ready.");
+    return;
+  }
+
+  // Pass 1 -- decompose. Token-heaviest call in the pipeline.
+  const subIssues = await decomposeIssue({ title, body, repoContext: context });
   if (subIssues.length === 0) {
     await octokit.rest.issues.createComment({
       owner,
@@ -242,7 +297,7 @@ async function run(): Promise<void> {
     // Pass 2 -- classify. The riskiest step: a wrong "mechanical" here ships
     // an unreviewed PR, so deriveDelegationResult defaults to judgement on
     // any doubt.
-    const result = await classifyForDelegation(subIssue);
+    const result = await classifyForDelegation({ ...subIssue, repoContext: context });
 
     await octokit.rest.issues.addLabels({
       owner,

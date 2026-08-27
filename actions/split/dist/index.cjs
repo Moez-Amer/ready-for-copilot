@@ -78118,6 +78118,157 @@ function getOctokit(token, options, ...additionalPlugins) {
   return new GitHubWithPlugins(getOctokitOptions(token, options));
 }
 
+// ../../packages/repo-context/dist/symbols.js
+var PATH_PATTERN = /(?:^|[\s`'"(])((?:[\w.-]+\/)+[\w.-]*)/g;
+var BACKTICKED = /`([^`\n]{2,80})`/g;
+var IDENTIFIER = /^[A-Za-z_$][\w$]*$/;
+var PROSE = /* @__PURE__ */ new Set([
+  "the",
+  "this",
+  "that",
+  "when",
+  "then",
+  "should",
+  "would",
+  "could",
+  "will",
+  "and",
+  "but",
+  "for",
+  "with",
+  "from",
+  "into",
+  "onto",
+  "user",
+  "users",
+  "issue",
+  "bug",
+  "fix",
+  "add",
+  "update",
+  "remove",
+  "change",
+  "make",
+  "new",
+  "old",
+  "todo",
+  "note",
+  "done",
+  "expected",
+  "actual",
+  "steps",
+  "reproduce"
+]);
+function looksLikeCode(token) {
+  if (!IDENTIFIER.test(token))
+    return false;
+  if (PROSE.has(token.toLowerCase()))
+    return false;
+  return /[a-z][A-Z]/.test(token) || token.includes("_") || /^[A-Z]/.test(token);
+}
+function extractClaims(text, limits = { paths: 8, symbols: 6 }) {
+  const paths = /* @__PURE__ */ new Set();
+  const symbols = /* @__PURE__ */ new Set();
+  for (const match of text.matchAll(PATH_PATTERN)) {
+    const candidate = match[1]?.replace(/[.,;:)]+$/, "");
+    if (candidate && candidate.length > 2 && !candidate.startsWith("http")) {
+      paths.add(candidate);
+    }
+  }
+  for (const match of text.matchAll(BACKTICKED)) {
+    const inner = match[1]?.trim() ?? "";
+    if (inner.includes("/")) {
+      paths.add(inner.replace(/[.,;:)]+$/, ""));
+    } else {
+      const bare = inner.replace(/\(\)$/, "");
+      if (IDENTIFIER.test(bare) && !PROSE.has(bare.toLowerCase()))
+        symbols.add(bare);
+    }
+  }
+  for (const token of text.split(/[^\w$]+/)) {
+    if (looksLikeCode(token))
+      symbols.add(token);
+  }
+  return {
+    paths: [...paths].slice(0, limits.paths),
+    symbols: [...symbols].slice(0, limits.symbols)
+  };
+}
+
+// ../../packages/repo-context/dist/index.js
+var SKIP_DIR = /(^|\/)(node_modules|dist|build|out|vendor|coverage|\.git|\.next|target|__pycache__)(\/|$)/;
+var SKIP_FILE = /\.(png|jpe?g|gif|svg|ico|webp|woff2?|ttf|eot|mp4|mov|zip|gz|pdf|lock|map|min\.js|min\.css)$/i;
+var MAX_LISTED_FILES = 300;
+var MAX_SEARCHES = 6;
+function isInteresting(path8) {
+  return !SKIP_DIR.test(path8) && !SKIP_FILE.test(path8);
+}
+function summariseByDirectory(paths) {
+  const counts = /* @__PURE__ */ new Map();
+  for (const path8 of paths) {
+    const dir = path8.includes("/") ? path8.slice(0, path8.lastIndexOf("/")) : ".";
+    counts.set(dir, (counts.get(dir) ?? 0) + 1);
+  }
+  return [...counts.entries()].sort((a6, b6) => b6[1] - a6[1]).slice(0, 120).map(([dir, count]) => `${dir}/ (${count} files)`).join("\n");
+}
+async function listRepoFiles(octokit, owner, repo) {
+  try {
+    const { data: repoData } = await octokit.rest.repos.get({ owner, repo });
+    const { data: tree } = await octokit.rest.git.getTree({
+      owner,
+      repo,
+      tree_sha: repoData.default_branch,
+      recursive: "1"
+    });
+    return tree.tree.filter((entry) => entry.type === "blob" && entry.path && isInteresting(entry.path)).map((entry) => entry.path);
+  } catch {
+    return null;
+  }
+}
+async function symbolExists(octokit, owner, repo, symbol2) {
+  try {
+    const { data } = await octokit.rest.search.code({
+      q: `${symbol2} repo:${owner}/${repo}`,
+      per_page: 1
+    });
+    return data.total_count > 0;
+  } catch {
+    return null;
+  }
+}
+async function buildRepoContext({ octokit, owner, repo, issueText }) {
+  const files = await listRepoFiles(octokit, owner, repo);
+  if (!files)
+    return null;
+  const sections = [];
+  sections.push(files.length <= MAX_LISTED_FILES ? `## Files in this repository (${files.length})
+${files.join("\n")}` : `## Directories in this repository (${files.length} files total, listed by directory)
+${summariseByDirectory(files)}`);
+  const claims = extractClaims(issueText);
+  if (claims.paths.length > 0) {
+    const fileSet = new Set(files);
+    const lines = claims.paths.map((claimed) => {
+      const normalised = claimed.replace(/\/$/, "");
+      const exact = fileSet.has(claimed) || fileSet.has(normalised);
+      const asDirectory = files.some((file2) => file2.startsWith(`${normalised}/`));
+      return exact || asDirectory ? `- \`${claimed}\` \u2014 EXISTS` : `- \`${claimed}\` \u2014 NOT FOUND in this repository`;
+    });
+    sections.push(`## Paths this issue names
+${lines.join("\n")}`);
+  }
+  if (claims.symbols.length > 0) {
+    const results = await Promise.all(claims.symbols.slice(0, MAX_SEARCHES).map(async (symbol2) => {
+      const found = await symbolExists(octokit, owner, repo, symbol2);
+      if (found === null)
+        return `- \`${symbol2}\` \u2014 could not verify (code search unavailable)`;
+      return found ? `- \`${symbol2}\` \u2014 found in this repository` : `- \`${symbol2}\` \u2014 NOT FOUND in this repository`;
+    }));
+    sections.push(`## Symbols this issue names
+${results.join("\n")}`);
+  }
+  return sections.join("\n\n");
+}
+
 // ../../node_modules/zod/v4/classic/external.js
 var external_exports = {};
 __export(external_exports, {
@@ -92693,6 +92844,20 @@ Finally, be honest when work genuinely needs a human. Some tasks \u2014 visual d
 function minConfidence(signals) {
   return Math.min(...signals.map((s2) => s2.confidence));
 }
+function deriveReadinessResult(raw) {
+  const layerA = [raw.outcome, raw.scope, raw.context, raw.ambiguity];
+  const grounding = "grounding" in raw ? raw.grounding : null;
+  return {
+    raw,
+    score: layerA.filter((s2) => s2.pass).length,
+    confident: minConfidence(layerA) >= CONFIDENCE_THRESHOLD,
+    suggestion: raw.suggestion,
+    // A low-confidence grounding call is treated as unverified, not failed --
+    // the signal should only ever block delegation when it is sure.
+    grounded: grounding === null ? null : grounding.confidence < CONFIDENCE_THRESHOLD ? null : grounding.pass,
+    groundingRationale: grounding && !grounding.pass ? grounding.rationale : null
+  };
+}
 function deriveDelegationResult(raw) {
   const layerA = [raw.outcome, raw.scope, raw.context, raw.ambiguity];
   const layerB = [raw.taskPattern, raw.blastRadius];
@@ -93572,6 +93737,28 @@ ${formattedIssues}${suffix}`);
 }
 
 // ../../packages/scorer/dist/rubric.js
+var READINESS_RUBRIC = `You evaluate whether a GitHub issue is well-specified enough for a coding agent to act on safely, without a human clarifying anything first.
+
+Score these four signals about the issue below. For each: pass/fail, a confidence from 0 to 1, and a one-sentence rationale.
+
+- outcome: Would you know when this issue is done? Pass only if there is a concrete, checkable way to tell.
+- scope: Is this one bounded change, not several unrelated changes bundled together?
+- context: Are the relevant files, repo location, or reproduction steps identified \u2014 inside this repository, not assumed knowledge?
+- ambiguity: Is the issue free of undefined or subjective terms doing the real work (e.g. "fix the bug", "make it better")?
+
+Then write one concrete rewrite suggestion aimed at whichever signal scored weakest (lowest confidence, or a fail). If all four signals clearly pass, return an empty string for the suggestion.
+
+On confidence: confidence measures how sure you are of the pass/fail call itself, NOT how good the issue is. An issue that plainly lacks a signal is a CONFIDENT fail \u2014 score it pass=false with high confidence (0.8-1.0). "Fix the login bug" fails all four signals confidently; it is not an uncertain case. Reserve low confidence (below 0.6) for when you genuinely cannot tell either way, such as an issue referring to files, discussions, or context you cannot see. Do not assume any information beyond what's in the title and body.`;
+var GROUNDING_RUBRIC = `
+You are also given context about what this repository actually contains: its file layout, and the result of looking up every path and symbol this issue names. Use it to score one more signal:
+
+- grounding: Does this issue's description of the EXISTING code match reality?
+  * Fail it when the issue asserts something is already there and the context reports it NOT FOUND \u2014 a function, file, directory, or column it says to modify, rename, or fix.
+  * Pass it when the issue proposes something new. "Add dark mode", "create a settings page", "we need a retry helper" all describe code that does not exist yet; that is what a feature request is, and it is not a grounding failure. Judge instead whether the surrounding claims hold \u2014 if it says to add a helper to a directory that does not exist, that is a real problem.
+  * Pass it when nothing in the issue makes a checkable claim about existing code.
+  * Where a lookup says "could not verify", do not treat that as a failure. Unknown is not the same as absent.
+
+An issue can be written beautifully and still fail grounding. That is the point of this signal: a fluent description of code that is not there is exactly the kind of issue that wastes an agent's time.`;
 var DELEGATION_RUBRIC = `You evaluate a sub-issue to decide whether it is safe to hand to an autonomous coding agent with no human review of the plan, or whether a human should own it instead.
 
 First, score the same four readiness signals as below: outcome, scope, context, ambiguity.
@@ -93592,6 +93779,8 @@ Then score two additional signals that are about safety, not clarity:
     * adding, removing, or replacing an external dependency, or changing which external service is called
   Do not reason your way past this list. "It's only a rename", "this migration is trivial", and "the interface stays the same" are not exemptions \u2014 the category is what matters, because these are the changes where an unreviewed mistake is expensive to undo.
   One narrow exception: a routine version bump of a dependency already in use (same interface, patch/minor update) does NOT fail this signal. The risk there is changing *what* the code depends on, not maintaining an existing pin.
+
+If repository context is included below, use it when judging blastRadius: check whether the files this sub-issue actually names are auth, migration, billing, or public-API files, rather than inferring from their names. A file called \`helper.ts\` that holds session logic is auth; a file called \`auth-colors.css\` is not.
 
 Bias toward failing taskPattern or blastRadius when you are unsure \u2014 a false "safe" here means an agent ships an unreviewed change into something sensitive.
 
@@ -93617,6 +93806,23 @@ ${issue3.body}`;
 # Repository context
 
 ${issue3.repoContext}` : base;
+}
+async function scoreReadiness(issue3) {
+  const grounded = Boolean(issue3.repoContext);
+  const response = await getClient().messages.parse({
+    model: MODEL,
+    max_tokens: 2048,
+    system: grounded ? `${READINESS_RUBRIC}
+${GROUNDING_RUBRIC}` : READINESS_RUBRIC,
+    messages: [{ role: "user", content: userContent(issue3) }],
+    output_config: {
+      format: zodOutputFormat(grounded ? GroundedReadinessSchema : ReadinessSchema)
+    }
+  });
+  if (!response.parsed_output) {
+    throw new Error("Readiness scorer returned no parsed output");
+  }
+  return deriveReadinessResult(response.parsed_output);
 }
 async function decomposeIssue(issue3) {
   const response = await getClient().messages.parse({
@@ -93726,6 +93932,28 @@ async function assignToCopilot(octokit, issueNodeId, copilotActorId, issueNumber
     return false;
   }
 }
+function refusalReason(readiness) {
+  if (readiness.grounded === false) {
+    return [
+      "I'm not splitting this one yet.",
+      "",
+      `\u26A0\uFE0F **This doesn't match the code:** ${readiness.groundingRationale}`,
+      "",
+      "Breaking up an issue that describes code which isn't there would just produce sub-issues carrying the same problem. Correct the references, then comment `/split` again."
+    ].join("\n");
+  }
+  if (readiness.confident && readiness.score <= 1) {
+    const suggestion = readiness.suggestion.trim();
+    return [
+      `I'm not splitting this one yet \u2014 it scores **${readiness.score}/4** on agent-readiness, which isn't enough to break into anything useful.`,
+      "",
+      suggestion,
+      "",
+      "Sharpen the issue, then comment `/split` again."
+    ].filter(Boolean).join("\n");
+  }
+  return null;
+}
 function formatSummary(created, copilotAvailable) {
   const mechanical = created.filter((c6) => c6.result.classification === "mechanical");
   const judgement = created.filter((c6) => c6.result.classification === "judgement");
@@ -93735,15 +93963,13 @@ function formatSummary(created, copilotAvailable) {
     `**Mechanical (${mechanical.length})** \u2014 outcome is fully determined, so these went to the coding agent:`
   ];
   lines.push(
-    mechanical.length ? mechanical.map(
-      (c6) => `- #${c6.number} \u2014 ${c6.subIssue.title}${c6.assignedToCopilot ? "" : " _(assignment failed; unassigned)_"}`
-    ).join("\n") : "- _none_"
+    mechanical.length ? mechanical.map((c6) => `- #${c6.number}${c6.assignedToCopilot ? "" : " _(assignment failed; unassigned)_"}`).join("\n") : "- _none_"
   );
   lines.push("", `**Judgement (${judgement.length})** \u2014 left unassigned for a human to claim:`);
   lines.push(
     judgement.length ? judgement.map((c6) => {
       const reason = !c6.result.raw.blastRadius.pass ? c6.result.raw.blastRadius.rationale : !c6.result.raw.taskPattern.pass ? c6.result.raw.taskPattern.rationale : `scored ${c6.result.layerAScore}/4 on readiness`;
-      return `- #${c6.number} \u2014 ${c6.subIssue.title}
+      return `- #${c6.number}
   _${reason}_`;
     }).join("\n") : "- _none_"
   );
@@ -93777,10 +94003,31 @@ async function run() {
     info(`Comment does not start with ${TRIGGER}. Nothing to do.`);
     return;
   }
-  const subIssues = await decomposeIssue({
-    title: issue3.title ?? "",
-    body: issue3.body ?? ""
+  const title = issue3.title ?? "";
+  const body = issue3.body ?? "";
+  const repoContext = await buildRepoContext({
+    octokit,
+    owner,
+    repo,
+    issueText: `${title}
+${body}`
   });
+  if (!repoContext) {
+    warning("Could not read repository context; splitting on issue text alone.");
+  }
+  const context3 = repoContext ?? void 0;
+  const refusal2 = refusalReason(await scoreReadiness({ title, body, repoContext: context3 }));
+  if (refusal2) {
+    await octokit.rest.issues.createComment({
+      owner,
+      repo,
+      issue_number: issue3.number,
+      body: refusal2
+    });
+    info("Declined to split: parent issue isn't ready.");
+    return;
+  }
+  const subIssues = await decomposeIssue({ title, body, repoContext: context3 });
   if (subIssues.length === 0) {
     await octokit.rest.issues.createComment({
       owner,
@@ -93805,7 +94052,7 @@ async function run() {
 Split from #${issue3.number}.`
     });
     await linkSubIssue(octokit, owner, repo, issue3.number, data.id);
-    const result = await classifyForDelegation(subIssue);
+    const result = await classifyForDelegation({ ...subIssue, repoContext: context3 });
     await octokit.rest.issues.addLabels({
       owner,
       repo,
