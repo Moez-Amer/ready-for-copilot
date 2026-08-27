@@ -78,6 +78,37 @@ async function linkSubIssue(
   }
 }
 
+/**
+ * The issues already open on this repository, excluding the one being split.
+ * Handed to the decomposer so it does not re-file work that already has a
+ * ticket -- splitting in bulk makes duplicates cheap to create and tedious to
+ * find afterwards.
+ */
+async function listOpenIssues(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  exclude: number,
+): Promise<string | null> {
+  try {
+    const { data } = await octokit.rest.issues.listForRepo({
+      owner,
+      repo,
+      state: "open",
+      per_page: 100,
+    });
+    const lines = data
+      .filter((i) => i.number !== exclude && !i.pull_request)
+      .map((i) => `- #${i.number}: ${i.title}`);
+    return lines.length ? lines.join("\n") : null;
+  } catch (err) {
+    core.warning(
+      `Could not list open issues; duplicates may be created: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  }
+}
+
 /** Resolve the Copilot coding agent's actor id, or null if it isn't available here. */
 async function findCopilotActorId(
   octokit: Octokit,
@@ -291,8 +322,10 @@ async function run(): Promise<void> {
     return;
   }
 
+  const openIssues = await listOpenIssues(octokit, owner, repo, issue.number);
+
   // Pass 1 -- decompose. Token-heaviest call in the pipeline.
-  const subIssues = await decomposeIssue({ title, body, repoContext: context });
+  const subIssues = await decomposeIssue({ title, body, repoContext: context }, openIssues ?? undefined);
   // One sub-issue is a copy of the parent, not a split. Refuse rather than
   // leave behind a duplicate that has to be closed by hand.
   if (subIssues.length < 2) {
@@ -300,7 +333,7 @@ async function run(): Promise<void> {
       owner,
       repo,
       issue_number: issue.number,
-      body: "I couldn't find a sensible way to split this issue — it looks like a single piece of work already, so splitting it would just restate it. Work it directly.",
+      body: "I couldn't find anything new to split out of this issue — either it is a single piece of work already, or the issues already open cover what it describes.",
     });
     return;
   }

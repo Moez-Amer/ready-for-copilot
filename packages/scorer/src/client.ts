@@ -59,12 +59,22 @@ export async function scoreReadiness(issue: IssueText): Promise<ReadinessResult>
  * not just requested in the prompt -- the prompt is a preference, this is the
  * guarantee.
  */
-export async function decomposeIssue(issue: IssueText): Promise<SubIssue[]> {
+export async function decomposeIssue(
+  issue: IssueText,
+  openIssues?: string,
+): Promise<SubIssue[]> {
   const response = await getClient().messages.parse({
     model: MODEL,
     max_tokens: 4096,
     system: DECOMPOSE_RUBRIC,
-    messages: [{ role: "user", content: userContent(issue) }],
+    messages: [
+      {
+        role: "user",
+        content: openIssues
+          ? `${userContent(issue)}\n\n---\n# Issues already open in this repository\n\n${openIssues}`
+          : userContent(issue),
+      },
+    ],
     output_config: { format: zodOutputFormat(DecompositionSchema) },
   });
   if (!response.parsed_output) {

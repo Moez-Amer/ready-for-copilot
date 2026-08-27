@@ -92829,6 +92829,8 @@ Every sub-issue you write is scored against the four signals below, and a sub-is
 - context: name the actual files, directories, or components involved. Carry over every specific path the parent issue mentions into the sub-issue it belongs to. Never rely on the reader having seen the parent.
 - ambiguity: no undefined or subjective terms doing the real work ("clean up", "improve", "properly", "as needed").
 
+If a list of already-open issues is provided, do not propose a sub-issue for work one of them already covers. Splitting is meant to create work that does not exist yet; re-filing an open issue under a new number leaves two tickets for one task and no way to tell which is authoritative. Cover the remainder of the parent issue and leave the rest alone. If the open issues already cover everything the parent describes, return no sub-issues at all.
+
 Write each body as a real issue body someone could act on cold, not a summary of what you did.
 
 Two habits to avoid, because they quietly make an otherwise-actionable sub-issue undelegatable:
@@ -93826,12 +93828,22 @@ ${GROUNDING_RUBRIC}` : READINESS_RUBRIC,
   }
   return deriveReadinessResult(response.parsed_output);
 }
-async function decomposeIssue(issue3) {
+async function decomposeIssue(issue3, openIssues) {
   const response = await getClient().messages.parse({
     model: MODEL,
     max_tokens: 4096,
     system: DECOMPOSE_RUBRIC,
-    messages: [{ role: "user", content: userContent(issue3) }],
+    messages: [
+      {
+        role: "user",
+        content: openIssues ? `${userContent(issue3)}
+
+---
+# Issues already open in this repository
+
+${openIssues}` : userContent(issue3)
+      }
+    ],
     output_config: { format: zodOutputFormat(DecompositionSchema) }
   });
   if (!response.parsed_output) {
@@ -93891,6 +93903,23 @@ async function linkSubIssue(octokit, owner, repo, parentNumber, childId) {
     warning(
       `Could not link #${childId} as a sub-issue of #${parentNumber}: ${err instanceof Error ? err.message : String(err)}`
     );
+  }
+}
+async function listOpenIssues(octokit, owner, repo, exclude) {
+  try {
+    const { data } = await octokit.rest.issues.listForRepo({
+      owner,
+      repo,
+      state: "open",
+      per_page: 100
+    });
+    const lines = data.filter((i6) => i6.number !== exclude && !i6.pull_request).map((i6) => `- #${i6.number}: ${i6.title}`);
+    return lines.length ? lines.join("\n") : null;
+  } catch (err) {
+    warning(
+      `Could not list open issues; duplicates may be created: ${err instanceof Error ? err.message : String(err)}`
+    );
+    return null;
   }
 }
 async function findCopilotActorId(octokit, owner, repo) {
@@ -94040,13 +94069,14 @@ ${body}`
     info("Declined to split: parent issue isn't ready.");
     return;
   }
-  const subIssues = await decomposeIssue({ title, body, repoContext: context3 });
+  const openIssues = await listOpenIssues(octokit, owner, repo, issue3.number);
+  const subIssues = await decomposeIssue({ title, body, repoContext: context3 }, openIssues ?? void 0);
   if (subIssues.length < 2) {
     await octokit.rest.issues.createComment({
       owner,
       repo,
       issue_number: issue3.number,
-      body: "I couldn't find a sensible way to split this issue \u2014 it looks like a single piece of work already, so splitting it would just restate it. Work it directly."
+      body: "I couldn't find anything new to split out of this issue \u2014 either it is a single piece of work already, or the issues already open cover what it describes."
     });
     return;
   }

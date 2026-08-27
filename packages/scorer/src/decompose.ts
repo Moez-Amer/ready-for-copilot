@@ -35,6 +35,8 @@ Every sub-issue you write is scored against the four signals below, and a sub-is
 - context: name the actual files, directories, or components involved. Carry over every specific path the parent issue mentions into the sub-issue it belongs to. Never rely on the reader having seen the parent.
 - ambiguity: no undefined or subjective terms doing the real work ("clean up", "improve", "properly", "as needed").
 
+If a list of already-open issues is provided, do not propose a sub-issue for work one of them already covers. Splitting is meant to create work that does not exist yet; re-filing an open issue under a new number leaves two tickets for one task and no way to tell which is authoritative. Cover the remainder of the parent issue and leave the rest alone. If the open issues already cover everything the parent describes, return no sub-issues at all.
+
 Write each body as a real issue body someone could act on cold, not a summary of what you did.
 
 Two habits to avoid, because they quietly make an otherwise-actionable sub-issue undelegatable:
