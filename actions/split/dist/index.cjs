@@ -92792,7 +92792,7 @@ var SignalSchema = external_exports.object({
 });
 var ReadinessSchema = external_exports.object({
   outcome: SignalSchema.describe("Would you know when this issue is done?"),
-  scope: SignalSchema.describe("Is this one bounded change, not several bundled together?"),
+  scope: SignalSchema.describe("Is this ONE change? Several related changes are still several changes -- a list of distinct edits fails this even when they share a theme or a file."),
   context: SignalSchema.describe("Are the relevant files or reproduction steps identified in this repo (not assumed knowledge)?"),
   ambiguity: SignalSchema.describe("Is the issue free of undefined or subjective terms doing the real work?"),
   suggestion: external_exports.string().describe("One concrete rewrite suggestion targeting the weakest signal above. Empty string if all four signals pass.")
@@ -93742,11 +93742,13 @@ var READINESS_RUBRIC = `You evaluate whether a GitHub issue is well-specified en
 Score these four signals about the issue below. For each: pass/fail, a confidence from 0 to 1, and a one-sentence rationale.
 
 - outcome: Would you know when this issue is done? Pass only if there is a concrete, checkable way to tell.
-- scope: Is this one bounded change, not several unrelated changes bundled together?
+- scope: Is this ONE change? Changes that share a theme are still separate changes \u2014 a list of several distinct edits fails this signal even when they are all related, all in the same file, or all part of the same effort. Ask whether one person could land this in one focused commit without deciding anything else along the way. If the issue enumerates multiple edits, or mixes doing something with deciding something, scope fails.
 - context: Are the relevant files, repo location, or reproduction steps identified \u2014 inside this repository, not assumed knowledge?
 - ambiguity: Is the issue free of undefined or subjective terms doing the real work (e.g. "fix the bug", "make it better")?
 
 Then write one concrete rewrite suggestion aimed at whichever signal scored weakest (lowest confidence, or a fail). If all four signals clearly pass, return an empty string for the suggestion.
+
+One special case: if the issue's main problem is that it bundles several separate changes together \u2014 scope fails, but the individual pieces are each described concretely \u2014 say so and suggest commenting \`/split\` on the issue to break it into sub-issues, rather than suggesting a rewrite.
 
 On confidence: confidence measures how sure you are of the pass/fail call itself, NOT how good the issue is. An issue that plainly lacks a signal is a CONFIDENT fail \u2014 score it pass=false with high confidence (0.8-1.0). "Fix the login bug" fails all four signals confidently; it is not an uncertain case. Reserve low confidence (below 0.6) for when you genuinely cannot tell either way, such as an issue referring to files, discussions, or context you cannot see. Do not assume any information beyond what's in the title and body.`;
 var GROUNDING_RUBRIC = `
@@ -93764,7 +93766,7 @@ var DELEGATION_RUBRIC = `You evaluate a sub-issue to decide whether it is safe t
 First, score the same four readiness signals as below: outcome, scope, context, ambiguity.
 
 - outcome: Would you know when this issue is done? Pass only if there is a concrete, checkable way to tell.
-- scope: Is this one bounded change, not several unrelated changes bundled together?
+- scope: Is this ONE change? Changes that share a theme are still separate changes \u2014 a list of several distinct edits fails this signal even when they are all related, all in the same file, or all part of the same effort. Ask whether one person could land this in one focused commit without deciding anything else along the way. If the issue enumerates multiple edits, or mixes doing something with deciding something, scope fails.
 - context: Are the relevant files, repo location, or reproduction steps identified \u2014 inside this repository, not assumed knowledge?
 - ambiguity: Is the issue free of undefined or subjective terms doing the real work (e.g. "fix the bug", "make it better")?
 
@@ -93951,14 +93953,16 @@ function refusalReason(readiness) {
       "Splitting it would just restate it as a sub-issue. Work it directly, or hand it to an agent if it carries the `agent-ready` label."
     ].join("\n");
   }
-  if (readiness.confident && readiness.score <= 1) {
+  if (!readiness.raw.context.pass && readiness.raw.context.confidence >= CONFIDENCE_THRESHOLD) {
     const suggestion = readiness.suggestion.trim();
     return [
-      `I'm not splitting this one yet \u2014 it scores **${readiness.score}/4** on agent-readiness, which isn't enough to break into anything useful.`,
+      "I'm not splitting this one yet \u2014 there's nothing concrete here to split along.",
+      "",
+      `_${readiness.raw.context.rationale}_`,
       "",
       suggestion,
       "",
-      "Sharpen the issue, then comment `/split` again."
+      "Name the files or components involved, then comment `/split` again."
     ].filter(Boolean).join("\n");
   }
   return null;

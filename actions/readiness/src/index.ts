@@ -59,13 +59,19 @@ function formatComment(result: ReadinessResult): string {
   return `**Agent-readiness: ${result.score}/4**\n\n${suggestion}${grounding}`;
 }
 
-/** Which single label this result earns, or null when we can't judge. */
+/**
+ * Which single label this result earns, or null when we can't judge.
+ *
+ * The label names the most useful next action, not every fault found. A
+ * half-written issue needs detail whether or not its references check out, and
+ * the comment reports the grounding problem either way. not-in-codebase is
+ * reserved for the surprising case: an issue that reads as ready but describes
+ * code that isn't there.
+ */
 function labelFor(result: ReadinessResult): string | null {
-  // A fluent issue about code that isn't there is the most important state to
-  // surface, so it outranks the score.
-  if (result.grounded === false) return LABELS.notInCodebase.name;
   if (!result.confident) return null;
-  return result.score === 4 ? LABELS.ready.name : LABELS.needsDetail.name;
+  if (result.score < 4) return LABELS.needsDetail.name;
+  return result.grounded === false ? LABELS.notInCodebase.name : LABELS.ready.name;
 }
 
 async function ensureLabelExists(

@@ -167,14 +167,21 @@ function refusalReason(readiness: ReadinessResult): string | null {
       "Splitting it would just restate it as a sub-issue. Work it directly, or hand it to an agent if it carries the `agent-ready` label.",
     ].join("\n");
   }
-  if (readiness.confident && readiness.score <= 1) {
+  // Deliberately not the /4 score. A splittable issue scores low by nature:
+  // bundling several changes drags down outcome and ambiguity too, so scoring
+  // would reject exactly the issues this command exists for. What actually
+  // separates "multi-part" from "too vague" is whether the issue names
+  // anything concrete -- decompose needs real seams to split along.
+  if (!readiness.raw.context.pass && readiness.raw.context.confidence >= CONFIDENCE_THRESHOLD) {
     const suggestion = readiness.suggestion.trim();
     return [
-      `I'm not splitting this one yet — it scores **${readiness.score}/4** on agent-readiness, which isn't enough to break into anything useful.`,
+      "I'm not splitting this one yet — there's nothing concrete here to split along.",
+      "",
+      `_${readiness.raw.context.rationale}_`,
       "",
       suggestion,
       "",
-      "Sharpen the issue, then comment `/split` again.",
+      "Name the files or components involved, then comment `/split` again.",
     ]
       .filter(Boolean)
       .join("\n");

@@ -18,7 +18,9 @@ export type Signal = z.infer<typeof SignalSchema>;
 // Layer A: is the issue well-specified enough to act on at all.
 export const ReadinessSchema = z.object({
   outcome: SignalSchema.describe("Would you know when this issue is done?"),
-  scope: SignalSchema.describe("Is this one bounded change, not several bundled together?"),
+  scope: SignalSchema.describe(
+    "Is this ONE change? Several related changes are still several changes -- a list of distinct edits fails this even when they share a theme or a file.",
+  ),
   context: SignalSchema.describe(
     "Are the relevant files or reproduction steps identified in this repo (not assumed knowledge)?",
   ),
