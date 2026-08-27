@@ -69,6 +69,12 @@ A third action builds a static page showing where issues land, and whether the r
 
 The report covers whichever repository it runs in, so each repository using this tool publishes its own, about its own issues. Setup is in step 3 below.
 
+To see one without deploying anything, generate it locally:
+
+```bash
+npm run report -- owner/repo        # writes triage-report.html
+```
+
 ## Setup
 
 ### 1. A Bedrock API key
