@@ -77,3 +77,29 @@ describe("deriveDelegationResult", () => {
     expect(result.classification).toBe("judgement");
   });
 });
+
+describe("deriveReadinessResult grounding", () => {
+  it("reports grounded as null when no repository context was available", () => {
+    const result = deriveReadinessResult(readiness());
+    expect(result.grounded).toBeNull();
+    expect(result.groundingRationale).toBeNull();
+  });
+
+  it("reports a confident grounding failure, with its reason", () => {
+    const raw = { ...readiness(), grounding: { pass: false, confidence: 0.9, rationale: "no such file" } };
+    const result = deriveReadinessResult(raw);
+    expect(result.grounded).toBe(false);
+    expect(result.groundingRationale).toBe("no such file");
+  });
+
+  it("treats a low-confidence grounding call as unverified, not failed", () => {
+    const raw = { ...readiness(), grounding: signal(false, 0.2) };
+    const result = deriveReadinessResult(raw);
+    expect(result.grounded).toBeNull();
+  });
+
+  it("keeps grounding out of the /4 score", () => {
+    const raw = { ...readiness(), grounding: { pass: false, confidence: 0.95, rationale: "x" } };
+    expect(deriveReadinessResult(raw).score).toBe(4);
+  });
+});

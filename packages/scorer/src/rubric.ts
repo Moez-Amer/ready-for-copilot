@@ -11,6 +11,23 @@ Then write one concrete rewrite suggestion aimed at whichever signal scored weak
 
 On confidence: confidence measures how sure you are of the pass/fail call itself, NOT how good the issue is. An issue that plainly lacks a signal is a CONFIDENT fail — score it pass=false with high confidence (0.8-1.0). "Fix the login bug" fails all four signals confidently; it is not an uncertain case. Reserve low confidence (below 0.6) for when you genuinely cannot tell either way, such as an issue referring to files, discussions, or context you cannot see. Do not assume any information beyond what's in the title and body.`;
 
+/**
+ * Appended to the readiness rubric when repository context is available.
+ * The feature-request carve-out matters: "add dark mode" describes code that
+ * does not exist, and that is the entire point of a feature request, not a
+ * defect in the issue.
+ */
+export const GROUNDING_RUBRIC = `
+You are also given context about what this repository actually contains: its file layout, and the result of looking up every path and symbol this issue names. Use it to score one more signal:
+
+- grounding: Does this issue's description of the EXISTING code match reality?
+  * Fail it when the issue asserts something is already there and the context reports it NOT FOUND — a function, file, directory, or column it says to modify, rename, or fix.
+  * Pass it when the issue proposes something new. "Add dark mode", "create a settings page", "we need a retry helper" all describe code that does not exist yet; that is what a feature request is, and it is not a grounding failure. Judge instead whether the surrounding claims hold — if it says to add a helper to a directory that does not exist, that is a real problem.
+  * Pass it when nothing in the issue makes a checkable claim about existing code.
+  * Where a lookup says "could not verify", do not treat that as a failure. Unknown is not the same as absent.
+
+An issue can be written beautifully and still fail grounding. That is the point of this signal: a fluent description of code that is not there is exactly the kind of issue that wastes an agent's time.`;
+
 export const DELEGATION_RUBRIC = `You evaluate a sub-issue to decide whether it is safe to hand to an autonomous coding agent with no human review of the plan, or whether a human should own it instead.
 
 First, score the same four readiness signals as below: outcome, scope, context, ambiguity.

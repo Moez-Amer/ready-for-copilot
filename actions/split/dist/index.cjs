@@ -92646,6 +92646,9 @@ var ReadinessSchema = external_exports.object({
   ambiguity: SignalSchema.describe("Is the issue free of undefined or subjective terms doing the real work?"),
   suggestion: external_exports.string().describe("One concrete rewrite suggestion targeting the weakest signal above. Empty string if all four signals pass.")
 });
+var GroundedReadinessSchema = ReadinessSchema.extend({
+  grounding: SignalSchema.describe("Does this issue's description of the EXISTING code match reality? Fail only when it asserts something exists that the provided repository context reports as NOT FOUND. Proposing new code that does not exist yet is a feature request, not a grounding failure.")
+});
 var DelegationSchema = ReadinessSchema.extend({
   taskPattern: SignalSchema.describe("Pass = this is a recognizable, previously-common kind of change (rename, import fix, config bump, dependency bump, test/snapshot update), not novel or design-driven work."),
   blastRadius: SignalSchema.describe("CATEGORICAL, not a risk judgment. Fail if the change touches auth, database schema/data migrations (including a 'simple' column rename), billing, public API surfaces, or adds/removes/replaces an external dependency. Simplicity is not an exemption. Sole exception: a version bump of a dependency already in use.")
@@ -93604,10 +93607,16 @@ function getClient() {
   return client;
 }
 function userContent(issue3) {
-  return `Title: ${issue3.title}
+  const base = `Title: ${issue3.title}
 
 Body:
 ${issue3.body}`;
+  return issue3.repoContext ? `${base}
+
+---
+# Repository context
+
+${issue3.repoContext}` : base;
 }
 async function decomposeIssue(issue3) {
   const response = await getClient().messages.parse({

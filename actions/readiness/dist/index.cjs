@@ -51255,18 +51255,18 @@ function stsRegionDefaultResolver(loaderConfig = {}) {
   return loadConfig({
     ...NODE_REGION_CONFIG_OPTIONS,
     async default() {
-      if (!warning.silence) {
+      if (!warning2.silence) {
         console.warn("@aws-sdk - WARN - default STS region of us-east-1 used. See @aws-sdk/credential-providers README and set a region explicitly.");
       }
       return "us-east-1";
     }
   }, { ...NODE_REGION_CONFIG_FILE_OPTIONS, ...loaderConfig });
 }
-var warning;
+var warning2;
 var init_stsRegionDefaultResolver = __esm({
   "../../node_modules/@aws-sdk/core/dist-es/submodules/client/region-config-resolver/stsRegionDefaultResolver.js"() {
     init_config2();
-    warning = {
+    warning2 = {
       silence: false
     };
   }
@@ -51343,7 +51343,7 @@ __export(client_exports2, {
   setTokenFeature: () => setTokenFeature,
   state: () => state,
   stsRegionDefaultResolver: () => stsRegionDefaultResolver,
-  stsRegionWarning: () => warning,
+  stsRegionWarning: () => warning2,
   toEndpointV1: () => toEndpointV12,
   useDefaultPartitionInfo: () => useDefaultPartitionInfo,
   userAgentMiddleware: () => userAgentMiddleware
@@ -58255,15 +58255,15 @@ var init_coercing_serializers = __esm({
         return val;
       }
       if (typeof val === "number" || typeof val === "bigint") {
-        const warning2 = new Error(`Received number ${val} where a string was expected.`);
-        warning2.name = "Warning";
-        console.warn(warning2);
+        const warning3 = new Error(`Received number ${val} where a string was expected.`);
+        warning3.name = "Warning";
+        console.warn(warning3);
         return String(val);
       }
       if (typeof val === "boolean") {
-        const warning2 = new Error(`Received boolean ${val} where a string was expected.`);
-        warning2.name = "Warning";
-        console.warn(warning2);
+        const warning3 = new Error(`Received boolean ${val} where a string was expected.`);
+        warning3.name = "Warning";
+        console.warn(warning3);
         return String(val);
       }
       return val;
@@ -58277,9 +58277,9 @@ var init_coercing_serializers = __esm({
       if (typeof val === "string") {
         const lowercase2 = val.toLowerCase();
         if (val !== "" && lowercase2 !== "false" && lowercase2 !== "true") {
-          const warning2 = new Error(`Received string "${val}" where a boolean was expected.`);
-          warning2.name = "Warning";
-          console.warn(warning2);
+          const warning3 = new Error(`Received string "${val}" where a boolean was expected.`);
+          warning3.name = "Warning";
+          console.warn(warning3);
         }
         return val !== "" && lowercase2 !== "false";
       }
@@ -58294,9 +58294,9 @@ var init_coercing_serializers = __esm({
       if (typeof val === "string") {
         const num = Number(val);
         if (num.toString() !== val) {
-          const warning2 = new Error(`Received string "${val}" where a number was expected.`);
-          warning2.name = "Warning";
-          console.warn(warning2);
+          const warning3 = new Error(`Received string "${val}" where a number was expected.`);
+          warning3.name = "Warning";
+          console.warn(warning3);
           return val;
         }
         return num;
@@ -74023,6 +74023,9 @@ function setFailed(message) {
 function error(message, properties = {}) {
   issueCommand("error", toCommandProperties(properties), message instanceof Error ? message.toString() : message);
 }
+function warning(message, properties = {}) {
+  issueCommand("warning", toCommandProperties(properties), message instanceof Error ? message.toString() : message);
+}
 
 // ../../node_modules/@actions/github/lib/context.js
 var import_fs2 = require("fs");
@@ -78107,6 +78110,157 @@ var context2 = new Context();
 function getOctokit(token, options, ...additionalPlugins) {
   const GitHubWithPlugins = GitHub.plugin(...additionalPlugins);
   return new GitHubWithPlugins(getOctokitOptions(token, options));
+}
+
+// ../../packages/repo-context/dist/symbols.js
+var PATH_PATTERN = /(?:^|[\s`'"(])((?:[\w.-]+\/)+[\w.-]*)/g;
+var BACKTICKED = /`([^`\n]{2,80})`/g;
+var IDENTIFIER = /^[A-Za-z_$][\w$]*$/;
+var PROSE = /* @__PURE__ */ new Set([
+  "the",
+  "this",
+  "that",
+  "when",
+  "then",
+  "should",
+  "would",
+  "could",
+  "will",
+  "and",
+  "but",
+  "for",
+  "with",
+  "from",
+  "into",
+  "onto",
+  "user",
+  "users",
+  "issue",
+  "bug",
+  "fix",
+  "add",
+  "update",
+  "remove",
+  "change",
+  "make",
+  "new",
+  "old",
+  "todo",
+  "note",
+  "done",
+  "expected",
+  "actual",
+  "steps",
+  "reproduce"
+]);
+function looksLikeCode(token) {
+  if (!IDENTIFIER.test(token))
+    return false;
+  if (PROSE.has(token.toLowerCase()))
+    return false;
+  return /[a-z][A-Z]/.test(token) || token.includes("_") || /^[A-Z]/.test(token);
+}
+function extractClaims(text, limits = { paths: 8, symbols: 6 }) {
+  const paths = /* @__PURE__ */ new Set();
+  const symbols = /* @__PURE__ */ new Set();
+  for (const match of text.matchAll(PATH_PATTERN)) {
+    const candidate = match[1]?.replace(/[.,;:)]+$/, "");
+    if (candidate && candidate.length > 2 && !candidate.startsWith("http")) {
+      paths.add(candidate);
+    }
+  }
+  for (const match of text.matchAll(BACKTICKED)) {
+    const inner = match[1]?.trim() ?? "";
+    if (inner.includes("/")) {
+      paths.add(inner.replace(/[.,;:)]+$/, ""));
+    } else {
+      const bare = inner.replace(/\(\)$/, "");
+      if (IDENTIFIER.test(bare) && !PROSE.has(bare.toLowerCase()))
+        symbols.add(bare);
+    }
+  }
+  for (const token of text.split(/[^\w$]+/)) {
+    if (looksLikeCode(token))
+      symbols.add(token);
+  }
+  return {
+    paths: [...paths].slice(0, limits.paths),
+    symbols: [...symbols].slice(0, limits.symbols)
+  };
+}
+
+// ../../packages/repo-context/dist/index.js
+var SKIP_DIR = /(^|\/)(node_modules|dist|build|out|vendor|coverage|\.git|\.next|target|__pycache__)(\/|$)/;
+var SKIP_FILE = /\.(png|jpe?g|gif|svg|ico|webp|woff2?|ttf|eot|mp4|mov|zip|gz|pdf|lock|map|min\.js|min\.css)$/i;
+var MAX_LISTED_FILES = 300;
+var MAX_SEARCHES = 6;
+function isInteresting(path8) {
+  return !SKIP_DIR.test(path8) && !SKIP_FILE.test(path8);
+}
+function summariseByDirectory(paths) {
+  const counts = /* @__PURE__ */ new Map();
+  for (const path8 of paths) {
+    const dir = path8.includes("/") ? path8.slice(0, path8.lastIndexOf("/")) : ".";
+    counts.set(dir, (counts.get(dir) ?? 0) + 1);
+  }
+  return [...counts.entries()].sort((a6, b6) => b6[1] - a6[1]).slice(0, 120).map(([dir, count]) => `${dir}/ (${count} files)`).join("\n");
+}
+async function listRepoFiles(octokit, owner, repo) {
+  try {
+    const { data: repoData } = await octokit.rest.repos.get({ owner, repo });
+    const { data: tree } = await octokit.rest.git.getTree({
+      owner,
+      repo,
+      tree_sha: repoData.default_branch,
+      recursive: "1"
+    });
+    return tree.tree.filter((entry) => entry.type === "blob" && entry.path && isInteresting(entry.path)).map((entry) => entry.path);
+  } catch {
+    return null;
+  }
+}
+async function symbolExists(octokit, owner, repo, symbol2) {
+  try {
+    const { data } = await octokit.rest.search.code({
+      q: `${symbol2} repo:${owner}/${repo}`,
+      per_page: 1
+    });
+    return data.total_count > 0;
+  } catch {
+    return null;
+  }
+}
+async function buildRepoContext({ octokit, owner, repo, issueText }) {
+  const files = await listRepoFiles(octokit, owner, repo);
+  if (!files)
+    return null;
+  const sections = [];
+  sections.push(files.length <= MAX_LISTED_FILES ? `## Files in this repository (${files.length})
+${files.join("\n")}` : `## Directories in this repository (${files.length} files total, listed by directory)
+${summariseByDirectory(files)}`);
+  const claims = extractClaims(issueText);
+  if (claims.paths.length > 0) {
+    const fileSet = new Set(files);
+    const lines = claims.paths.map((claimed) => {
+      const normalised = claimed.replace(/\/$/, "");
+      const exact = fileSet.has(claimed) || fileSet.has(normalised);
+      const asDirectory = files.some((file2) => file2.startsWith(`${normalised}/`));
+      return exact || asDirectory ? `- \`${claimed}\` \u2014 EXISTS` : `- \`${claimed}\` \u2014 NOT FOUND in this repository`;
+    });
+    sections.push(`## Paths this issue names
+${lines.join("\n")}`);
+  }
+  if (claims.symbols.length > 0) {
+    const results = await Promise.all(claims.symbols.slice(0, MAX_SEARCHES).map(async (symbol2) => {
+      const found = await symbolExists(octokit, owner, repo, symbol2);
+      if (found === null)
+        return `- \`${symbol2}\` \u2014 could not verify (code search unavailable)`;
+      return found ? `- \`${symbol2}\` \u2014 found in this repository` : `- \`${symbol2}\` \u2014 NOT FOUND in this repository`;
+    }));
+    sections.push(`## Symbols this issue names
+${results.join("\n")}`);
+  }
+  return sections.join("\n\n");
 }
 
 // ../../node_modules/zod/v4/classic/external.js
@@ -92637,6 +92791,9 @@ var ReadinessSchema = external_exports.object({
   ambiguity: SignalSchema.describe("Is the issue free of undefined or subjective terms doing the real work?"),
   suggestion: external_exports.string().describe("One concrete rewrite suggestion targeting the weakest signal above. Empty string if all four signals pass.")
 });
+var GroundedReadinessSchema = ReadinessSchema.extend({
+  grounding: SignalSchema.describe("Does this issue's description of the EXISTING code match reality? Fail only when it asserts something exists that the provided repository context reports as NOT FOUND. Proposing new code that does not exist yet is a feature request, not a grounding failure.")
+});
 var DelegationSchema = ReadinessSchema.extend({
   taskPattern: SignalSchema.describe("Pass = this is a recognizable, previously-common kind of change (rename, import fix, config bump, dependency bump, test/snapshot update), not novel or design-driven work."),
   blastRadius: SignalSchema.describe("CATEGORICAL, not a risk judgment. Fail if the change touches auth, database schema/data migrations (including a 'simple' column rename), billing, public API surfaces, or adds/removes/replaces an external dependency. Simplicity is not an exemption. Sole exception: a version bump of a dependency already in use.")
@@ -92683,11 +92840,16 @@ function minConfidence(signals) {
 }
 function deriveReadinessResult(raw) {
   const layerA = [raw.outcome, raw.scope, raw.context, raw.ambiguity];
+  const grounding = "grounding" in raw ? raw.grounding : null;
   return {
     raw,
     score: layerA.filter((s2) => s2.pass).length,
     confident: minConfidence(layerA) >= CONFIDENCE_THRESHOLD,
-    suggestion: raw.suggestion
+    suggestion: raw.suggestion,
+    // A low-confidence grounding call is treated as unverified, not failed --
+    // the signal should only ever block delegation when it is sure.
+    grounded: grounding === null ? null : grounding.confidence < CONFIDENCE_THRESHOLD ? null : grounding.pass,
+    groundingRationale: grounding && !grounding.pass ? grounding.rationale : null
   };
 }
 
@@ -93568,6 +93730,16 @@ Score these four signals about the issue below. For each: pass/fail, a confidenc
 Then write one concrete rewrite suggestion aimed at whichever signal scored weakest (lowest confidence, or a fail). If all four signals clearly pass, return an empty string for the suggestion.
 
 On confidence: confidence measures how sure you are of the pass/fail call itself, NOT how good the issue is. An issue that plainly lacks a signal is a CONFIDENT fail \u2014 score it pass=false with high confidence (0.8-1.0). "Fix the login bug" fails all four signals confidently; it is not an uncertain case. Reserve low confidence (below 0.6) for when you genuinely cannot tell either way, such as an issue referring to files, discussions, or context you cannot see. Do not assume any information beyond what's in the title and body.`;
+var GROUNDING_RUBRIC = `
+You are also given context about what this repository actually contains: its file layout, and the result of looking up every path and symbol this issue names. Use it to score one more signal:
+
+- grounding: Does this issue's description of the EXISTING code match reality?
+  * Fail it when the issue asserts something is already there and the context reports it NOT FOUND \u2014 a function, file, directory, or column it says to modify, rename, or fix.
+  * Pass it when the issue proposes something new. "Add dark mode", "create a settings page", "we need a retry helper" all describe code that does not exist yet; that is what a feature request is, and it is not a grounding failure. Judge instead whether the surrounding claims hold \u2014 if it says to add a helper to a directory that does not exist, that is a real problem.
+  * Pass it when nothing in the issue makes a checkable claim about existing code.
+  * Where a lookup says "could not verify", do not treat that as a failure. Unknown is not the same as absent.
+
+An issue can be written beautifully and still fail grounding. That is the point of this signal: a fluent description of code that is not there is exactly the kind of issue that wastes an agent's time.`;
 
 // ../../packages/scorer/dist/client.js
 var MODEL = process.env.BEDROCK_SCORER_MODEL ?? "us.anthropic.claude-haiku-4-5-20251001-v1:0";
@@ -93577,18 +93749,28 @@ function getClient() {
   return client;
 }
 function userContent(issue3) {
-  return `Title: ${issue3.title}
+  const base = `Title: ${issue3.title}
 
 Body:
 ${issue3.body}`;
+  return issue3.repoContext ? `${base}
+
+---
+# Repository context
+
+${issue3.repoContext}` : base;
 }
 async function scoreReadiness(issue3) {
+  const grounded = Boolean(issue3.repoContext);
   const response = await getClient().messages.parse({
     model: MODEL,
     max_tokens: 2048,
-    system: READINESS_RUBRIC,
+    system: grounded ? `${READINESS_RUBRIC}
+${GROUNDING_RUBRIC}` : READINESS_RUBRIC,
     messages: [{ role: "user", content: userContent(issue3) }],
-    output_config: { format: zodOutputFormat(ReadinessSchema) }
+    output_config: {
+      format: zodOutputFormat(grounded ? GroundedReadinessSchema : ReadinessSchema)
+    }
   });
   if (!response.parsed_output) {
     throw new Error("Readiness scorer returned no parsed output");
@@ -93601,18 +93783,22 @@ var AGENT_READY_LABEL = "agent-ready";
 var AGENT_READY_COLOR = "0e8a16";
 function formatComment(result) {
   const suggestion = result.suggestion.trim();
+  const grounding = result.grounded === false && result.groundingRationale ? `
+
+\u26A0\uFE0F **This doesn't match the code:** ${result.groundingRationale}` : "";
   if (!result.confident) {
     const header = "I can't score this issue confidently \u2014 there isn't enough here for me to judge it either way.";
-    return suggestion ? `${header}
+    return (suggestion ? `${header}
 
-${suggestion}` : header;
+${suggestion}` : header) + grounding;
   }
   if (result.score === 4) {
-    return "**Agent-readiness: 4/4** \u2014 this issue looks ready for a coding agent to act on.";
+    const headline = result.grounded === false ? "**Agent-readiness: 4/4 (writing) \u2014 but blocked**" : "**Agent-readiness: 4/4** \u2014 this issue looks ready for a coding agent to act on.";
+    return headline + grounding;
   }
   return `**Agent-readiness: ${result.score}/4**
 
-${suggestion}`;
+${suggestion}${grounding}`;
 }
 async function ensureLabelExists(octokit, owner, repo) {
   try {
@@ -93641,17 +93827,26 @@ async function run() {
     setFailed("This action must run on an `issues` event with an issue in the payload.");
     return;
   }
-  const result = await scoreReadiness({
-    title: issue3.title ?? "",
-    body: issue3.body ?? ""
+  const title = issue3.title ?? "";
+  const body = issue3.body ?? "";
+  const repoContext = await buildRepoContext({
+    octokit,
+    owner,
+    repo,
+    issueText: `${title}
+${body}`
   });
+  if (!repoContext) {
+    warning("Could not read repository context; scoring on issue text alone.");
+  }
+  const result = await scoreReadiness({ title, body, repoContext: repoContext ?? void 0 });
   await octokit.rest.issues.createComment({
     owner,
     repo,
     issue_number: issue3.number,
     body: formatComment(result)
   });
-  if (result.confident && result.score === 4) {
+  if (result.confident && result.score === 4 && result.grounded !== false) {
     await ensureLabelExists(octokit, owner, repo);
     await octokit.rest.issues.addLabels({
       owner,

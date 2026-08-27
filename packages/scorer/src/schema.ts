@@ -33,6 +33,19 @@ export const ReadinessSchema = z.object({
 });
 export type Readiness = z.infer<typeof ReadinessSchema>;
 
+/**
+ * Readiness plus a grounding check, used when repository context is available.
+ * Grounding is deliberately NOT part of the /4 score: the score measures how
+ * well the issue is written, and an issue can be written perfectly while being
+ * factually wrong about the codebase. It gates delegation instead.
+ */
+export const GroundedReadinessSchema = ReadinessSchema.extend({
+  grounding: SignalSchema.describe(
+    "Does this issue's description of the EXISTING code match reality? Fail only when it asserts something exists that the provided repository context reports as NOT FOUND. Proposing new code that does not exist yet is a feature request, not a grounding failure.",
+  ),
+});
+export type GroundedReadiness = z.infer<typeof GroundedReadinessSchema>;
+
 // Layer B: is it safe to delegate to an autonomous agent, independent of clarity.
 export const DelegationSchema = ReadinessSchema.extend({
   taskPattern: SignalSchema.describe(

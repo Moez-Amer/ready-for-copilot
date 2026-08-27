@@ -2,8 +2,8 @@ import { AnthropicBedrock } from "@anthropic-ai/bedrock-sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { DECOMPOSE_RUBRIC, DecompositionSchema, MAX_SUB_ISSUES, type SubIssue } from "./decompose.js";
 import { deriveDelegationResult, deriveReadinessResult, type DelegationResult, type ReadinessResult } from "./derive.js";
-import { DELEGATION_RUBRIC, READINESS_RUBRIC } from "./rubric.js";
-import { DelegationSchema, ReadinessSchema } from "./schema.js";
+import { DELEGATION_RUBRIC, GROUNDING_RUBRIC, READINESS_RUBRIC } from "./rubric.js";
+import { DelegationSchema, GroundedReadinessSchema, ReadinessSchema } from "./schema.js";
 
 // Served via Amazon Bedrock's classic bedrock-runtime endpoint (not Mantle --
 // Mantle turned out to have an access gap for Claude on this account that
@@ -23,19 +23,30 @@ function getClient(): AnthropicBedrock {
 export interface IssueText {
   title: string;
   body: string;
+  /**
+   * What this repository actually contains. When present, the scorer also
+   * checks the issue's claims about existing code against it.
+   */
+  repoContext?: string | undefined;
 }
 
 function userContent(issue: IssueText): string {
-  return `Title: ${issue.title}\n\nBody:\n${issue.body}`;
+  const base = `Title: ${issue.title}\n\nBody:\n${issue.body}`;
+  return issue.repoContext
+    ? `${base}\n\n---\n# Repository context\n\n${issue.repoContext}`
+    : base;
 }
 
 export async function scoreReadiness(issue: IssueText): Promise<ReadinessResult> {
+  const grounded = Boolean(issue.repoContext);
   const response = await getClient().messages.parse({
     model: MODEL,
     max_tokens: 2048,
-    system: READINESS_RUBRIC,
+    system: grounded ? `${READINESS_RUBRIC}\n${GROUNDING_RUBRIC}` : READINESS_RUBRIC,
     messages: [{ role: "user", content: userContent(issue) }],
-    output_config: { format: zodOutputFormat(ReadinessSchema) },
+    output_config: {
+      format: zodOutputFormat(grounded ? GroundedReadinessSchema : ReadinessSchema),
+    },
   });
   if (!response.parsed_output) {
     throw new Error("Readiness scorer returned no parsed output");
