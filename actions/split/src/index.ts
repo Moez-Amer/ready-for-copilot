@@ -1,6 +1,6 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
-import { buildRepoContext } from "@issue-triage/repo-context";
+import { buildRepoContext, findDuplicate, type ExistingIssue } from "@issue-triage/repo-context";
 import {
   CONFIDENCE_THRESHOLD,
   classifyForDelegation,
@@ -89,7 +89,7 @@ async function listOpenIssues(
   owner: string,
   repo: string,
   exclude: number,
-): Promise<string | null> {
+): Promise<ExistingIssue[]> {
   try {
     const { data } = await octokit.rest.issues.listForRepo({
       owner,
@@ -97,15 +97,14 @@ async function listOpenIssues(
       state: "open",
       per_page: 100,
     });
-    const lines = data
+    return data
       .filter((i) => i.number !== exclude && !i.pull_request)
-      .map((i) => `- #${i.number}: ${i.title}`);
-    return lines.length ? lines.join("\n") : null;
+      .map((i) => ({ number: i.number, title: i.title }));
   } catch (err) {
     core.warning(
       `Could not list open issues; duplicates may be created: ${err instanceof Error ? err.message : String(err)}`,
     );
-    return null;
+    return [];
   }
 }
 
@@ -220,7 +219,11 @@ function refusalReason(readiness: ReadinessResult): string | null {
   return null;
 }
 
-function formatSummary(created: CreatedSubIssue[], copilotAvailable: boolean): string {
+function formatSummary(
+  created: CreatedSubIssue[],
+  copilotAvailable: boolean,
+  skipped: Array<{ subIssue: SubIssue; existing: ExistingIssue }> = [],
+): string {
   const mechanical = created.filter((c) => c.result.classification === "mechanical");
   const judgement = created.filter((c) => c.result.classification === "judgement");
 
@@ -251,6 +254,14 @@ function formatSummary(created: CreatedSubIssue[], copilotAvailable: boolean): s
           .join("\n")
       : "- _none_",
   );
+
+  if (skipped.length) {
+    lines.push(
+      "",
+      `**Already covered (${skipped.length})** — not re-filed, because an open issue has these:`,
+      skipped.map((s) => `- #${s.existing.number} — _${s.subIssue.title}_`).join("\n"),
+    );
+  }
 
   if (!copilotAvailable) {
     lines.push(
@@ -323,9 +334,26 @@ async function run(): Promise<void> {
   }
 
   const openIssues = await listOpenIssues(octokit, owner, repo, issue.number);
+  const openIssueList = openIssues.length
+    ? openIssues.map((i) => `- #${i.number}: ${i.title}`).join("\n")
+    : undefined;
 
   // Pass 1 -- decompose. Token-heaviest call in the pipeline.
-  const subIssues = await decomposeIssue({ title, body, repoContext: context }, openIssues ?? undefined);
+  const proposed = await decomposeIssue({ title, body, repoContext: context }, openIssueList);
+
+  // The prompt asks the decomposer to skip work that already has an issue, and
+  // it does not reliably comply -- it was handed the list and re-filed one
+  // anyway. Enforce it here instead of hoping.
+  const skipped: Array<{ subIssue: SubIssue; existing: ExistingIssue }> = [];
+  const subIssues = proposed.filter((s) => {
+    const existing = findDuplicate(s.title, openIssues);
+    if (existing) {
+      skipped.push({ subIssue: s, existing });
+      core.info(`Skipping "${s.title}" -- already covered by #${existing.number}`);
+      return false;
+    }
+    return true;
+  });
   // One sub-issue is a copy of the parent, not a split. Refuse rather than
   // leave behind a duplicate that has to be closed by hand.
   if (subIssues.length < 2) {
@@ -390,7 +418,7 @@ async function run(): Promise<void> {
     owner,
     repo,
     issue_number: issue.number,
-    body: formatSummary(created, copilotActorId !== null),
+    body: formatSummary(created, copilotActorId !== null, skipped),
   });
 }
 

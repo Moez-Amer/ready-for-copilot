@@ -2,6 +2,8 @@ import type * as github from "@actions/github";
 import { extractClaims } from "./symbols.js";
 
 export { extractClaims } from "./symbols.js";
+export { findDuplicate, containment, titleTokens, DUPLICATE_THRESHOLD } from "./duplicates.js";
+export type { ExistingIssue } from "./duplicates.js";
 export type { ExtractedClaims } from "./symbols.js";
 
 type Octokit = ReturnType<typeof github.getOctokit>;

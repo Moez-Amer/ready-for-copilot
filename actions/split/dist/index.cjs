@@ -78195,6 +78195,66 @@ function extractClaims(text, limits = { paths: 8, symbols: 6 }) {
   };
 }
 
+// ../../packages/repo-context/dist/duplicates.js
+var STOPWORDS = /* @__PURE__ */ new Set([
+  "a",
+  "an",
+  "the",
+  "to",
+  "in",
+  "for",
+  "of",
+  "on",
+  "and",
+  "or",
+  "with",
+  "from",
+  "at",
+  "by",
+  "is",
+  "be",
+  "should",
+  "must",
+  "we",
+  "its",
+  "it",
+  "this",
+  "that",
+  "add",
+  "update",
+  "change",
+  "make",
+  "set"
+]);
+function titleTokens(title) {
+  return new Set(title.toLowerCase().split(/\s+/).map((word) => word.replace(/^[^\w./-]+|[^\w./-]+$/g, "")).filter((word) => word.length > 1 && !STOPWORDS.has(word)));
+}
+function containment(candidate, existing) {
+  const candidateTokens = titleTokens(candidate);
+  if (candidateTokens.size === 0)
+    return 0;
+  const existingTokens = titleTokens(existing);
+  let shared = 0;
+  for (const token of candidateTokens) {
+    if (existingTokens.has(token))
+      shared += 1;
+  }
+  return shared / candidateTokens.size;
+}
+var DUPLICATE_THRESHOLD = 0.7;
+function findDuplicate(candidate, existing, threshold = DUPLICATE_THRESHOLD) {
+  let best = null;
+  let bestScore = threshold;
+  for (const issue3 of existing) {
+    const score = containment(candidate, issue3.title);
+    if (score >= bestScore) {
+      best = issue3;
+      bestScore = score;
+    }
+  }
+  return best;
+}
+
 // ../../packages/repo-context/dist/index.js
 var SKIP_DIR = /(^|\/)(node_modules|dist|build|out|vendor|coverage|\.git|\.next|target|__pycache__)(\/|$)/;
 var SKIP_FILE = /\.(png|jpe?g|gif|svg|ico|webp|woff2?|ttf|eot|mp4|mov|zip|gz|pdf|lock|map|min\.js|min\.css)$/i;
@@ -93913,13 +93973,12 @@ async function listOpenIssues(octokit, owner, repo, exclude) {
       state: "open",
       per_page: 100
     });
-    const lines = data.filter((i6) => i6.number !== exclude && !i6.pull_request).map((i6) => `- #${i6.number}: ${i6.title}`);
-    return lines.length ? lines.join("\n") : null;
+    return data.filter((i6) => i6.number !== exclude && !i6.pull_request).map((i6) => ({ number: i6.number, title: i6.title }));
   } catch (err) {
     warning(
       `Could not list open issues; duplicates may be created: ${err instanceof Error ? err.message : String(err)}`
     );
-    return null;
+    return [];
   }
 }
 async function findCopilotActorId(octokit, owner, repo) {
@@ -93996,7 +94055,7 @@ function refusalReason(readiness) {
   }
   return null;
 }
-function formatSummary(created, copilotAvailable) {
+function formatSummary(created, copilotAvailable, skipped = []) {
   const mechanical = created.filter((c6) => c6.result.classification === "mechanical");
   const judgement = created.filter((c6) => c6.result.classification === "judgement");
   const lines = [
@@ -94015,6 +94074,13 @@ function formatSummary(created, copilotAvailable) {
   _${reason}_`;
     }).join("\n") : "- _none_"
   );
+  if (skipped.length) {
+    lines.push(
+      "",
+      `**Already covered (${skipped.length})** \u2014 not re-filed, because an open issue has these:`,
+      skipped.map((s2) => `- #${s2.existing.number} \u2014 _${s2.subIssue.title}_`).join("\n")
+    );
+  }
   if (!copilotAvailable) {
     lines.push(
       "",
@@ -94070,7 +94136,18 @@ ${body}`
     return;
   }
   const openIssues = await listOpenIssues(octokit, owner, repo, issue3.number);
-  const subIssues = await decomposeIssue({ title, body, repoContext: context3 }, openIssues ?? void 0);
+  const openIssueList = openIssues.length ? openIssues.map((i6) => `- #${i6.number}: ${i6.title}`).join("\n") : void 0;
+  const proposed = await decomposeIssue({ title, body, repoContext: context3 }, openIssueList);
+  const skipped = [];
+  const subIssues = proposed.filter((s2) => {
+    const existing = findDuplicate(s2.title, openIssues);
+    if (existing) {
+      skipped.push({ subIssue: s2, existing });
+      info(`Skipping "${s2.title}" -- already covered by #${existing.number}`);
+      return false;
+    }
+    return true;
+  });
   if (subIssues.length < 2) {
     await octokit.rest.issues.createComment({
       owner,
@@ -94124,7 +94201,7 @@ Split from #${issue3.number}.`
     owner,
     repo,
     issue_number: issue3.number,
-    body: formatSummary(created, copilotActorId !== null)
+    body: formatSummary(created, copilotActorId !== null, skipped)
   });
 }
 run().catch((err) => {
