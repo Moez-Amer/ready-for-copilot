@@ -6,6 +6,9 @@ on:
 
 permissions:
   issues: write
+  # Required to read the file tree for grounding. Declaring any
+  # permissions block defaults every unlisted scope to none.
+  contents: read
 
 jobs:
   score:
