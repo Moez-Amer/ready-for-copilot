@@ -67,7 +67,7 @@ It also skips any sub-issue an **open issue already covers**, and caps decomposi
 
 A third action builds a static page showing where issues land, and whether the rubric predicts anything: it compares median time-to-close for `agent-ready` against `needs-detail`. If well-scored issues don't actually resolve faster, the rubric is wrong — which is a more useful finding than the tool.
 
-Add `.github/workflows/issue-report.yml` (see the file in this repository), enable **Settings → Pages → Source: GitHub Actions**, and it publishes nightly. Run it on demand from the Actions tab.
+The report covers whichever repository it runs in, so each repository using this tool publishes its own, about its own issues. Setup is in step 3 below.
 
 ## Setup
 
@@ -133,6 +133,48 @@ jobs:
           aws-bearer-token-bedrock: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
           aws-region: us-east-1
 ```
+
+`.github/workflows/issue-report.yml` (optional — the triage report):
+
+```yaml
+name: Issue Triage Report
+
+on:
+  schedule:
+    - cron: "0 3 * * *"    # nightly
+  workflow_dispatch:        # and on demand
+
+permissions:
+  issues: read
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: Moez-Amer/ready-for-copilot/actions/analytics@main
+        with:
+          output: public/index.html
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+      - id: deploy
+        uses: actions/deploy-pages@v4
+```
+
+Then enable **Settings → Pages → Source: GitHub Actions**.
+
+> GitHub Pages is free on public repositories. Publishing from a private repository requires a paid plan — the report still generates without it, so you can upload it as a build artifact instead of deploying to Pages.
 
 > **`contents: read` is not optional.** Declaring any `permissions:` block sets every unlisted scope to none, so leaving it out silently disables grounding — the actions keep working, but stop checking whether issues match your code. The only symptom is a warning in the run log: `Could not read repository context`.
 
