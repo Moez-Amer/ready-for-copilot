@@ -70,8 +70,13 @@ function formatComment(result: ReadinessResult): string {
  */
 function labelFor(result: ReadinessResult): string | null {
   if (!result.confident) return null;
+  // For a broadly well-formed issue, pointing at code that isn't there is the
+  // bigger problem than any remaining detail. For a poorly-formed one it isn't:
+  // the writing is what needs fixing first, and the comment reports the
+  // grounding failure either way.
+  if (result.grounded === false && result.score >= 3) return LABELS.notInCodebase.name;
   if (result.score < 4) return LABELS.needsDetail.name;
-  return result.grounded === false ? LABELS.notInCodebase.name : LABELS.ready.name;
+  return LABELS.ready.name;
 }
 
 async function ensureLabelExists(

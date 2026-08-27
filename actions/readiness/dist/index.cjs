@@ -93827,8 +93827,9 @@ ${suggestion}${grounding}`;
 }
 function labelFor(result) {
   if (!result.confident) return null;
+  if (result.grounded === false && result.score >= 3) return LABELS.notInCodebase.name;
   if (result.score < 4) return LABELS.needsDetail.name;
-  return result.grounded === false ? LABELS.notInCodebase.name : LABELS.ready.name;
+  return LABELS.ready.name;
 }
 async function ensureLabelExists(octokit, owner, repo, name) {
   const spec = Object.values(LABELS).find((l4) => l4.name === name);
