@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatDuration, summarise, type AnalysedIssue } from "./stats.js";
+import { buildTrend, formatDuration, measureFeedback, summarise, type AnalysedIssue } from "./stats.js";
 
 const H = 3_600_000;
 const base = new Date("2026-01-01T00:00:00Z").getTime();
@@ -63,5 +63,78 @@ describe("formatDuration", () => {
   });
   it("shows a dash when there is nothing to report", () => {
     expect(formatDuration(null)).toBe("—");
+  });
+});
+
+describe("measureFeedback", () => {
+  const at = (h: number) => new Date(base + h * H).toISOString();
+
+  it("counts an issue that was flagged and later reached ready", () => {
+    const f = measureFeedback([
+      {
+        ...issue(1, ["agent-ready"], null),
+        history: [
+          { label: "needs-detail", action: "labeled", at: at(0) },
+          { label: "needs-detail", action: "unlabeled", at: at(5) },
+          { label: "agent-ready", action: "labeled", at: at(5) },
+        ],
+      },
+    ]);
+    expect(f.flagged).toBe(1);
+    expect(f.improved).toBe(1);
+    expect(f.medianHoursToImprove).toBe(5);
+  });
+
+  it("counts an issue still sitting flagged", () => {
+    const f = measureFeedback([
+      {
+        ...issue(2, ["needs-detail"], null),
+        history: [{ label: "needs-detail", action: "labeled", at: at(0) }],
+      },
+    ]);
+    expect(f.flagged).toBe(1);
+    expect(f.improved).toBe(0);
+  });
+
+  it("ignores issues that were ready from the start", () => {
+    const f = measureFeedback([
+      {
+        ...issue(3, ["agent-ready"], null),
+        history: [{ label: "agent-ready", action: "labeled", at: at(0) }],
+      },
+    ]);
+    expect(f.flagged).toBe(0);
+  });
+
+  it("does not count a flag applied after the issue was already ready", () => {
+    const f = measureFeedback([
+      {
+        ...issue(4, ["needs-detail"], null),
+        history: [
+          { label: "agent-ready", action: "labeled", at: at(0) },
+          { label: "needs-detail", action: "labeled", at: at(9) },
+        ],
+      },
+    ]);
+    expect(f.flagged).toBe(1);
+    expect(f.improved).toBe(0);
+  });
+
+  it("reports that it could not measure when no history was fetched", () => {
+    expect(measureFeedback([issue(5, ["agent-ready"], null)]).measured).toBe(false);
+  });
+});
+
+describe("buildTrend", () => {
+  it("groups issues by the week they were opened", () => {
+    const t = buildTrend([
+      issue(1, ["agent-ready"], null),
+      issue(2, ["needs-detail"], null),
+      { ...issue(3, ["mechanical"], null), createdAt: new Date(base + 8 * 24 * H).toISOString() },
+    ]);
+    expect(t).toHaveLength(2);
+    expect(t[0]?.opened).toBe(2);
+    expect(t[0]?.ready).toBe(1);
+    expect(t[1]?.ready).toBe(1);
   });
 });

@@ -1,4 +1,4 @@
-import { formatDuration, type Summary, type LabelStat } from "./stats.js";
+import { formatDuration, type Summary, type LabelStat, type FeedbackEffect, type TrendBucket } from "./stats.js";
 
 /** Each label's meaning and hue, so the page reads without a legend. */
 const LABEL_META: Record<string, { hue: string; blurb: string }> = {
@@ -55,6 +55,65 @@ function verdict(summary: Summary): string {
     : `<p class="verdict bad">Issues scored <strong>agent-ready</strong> are closing <strong>${ratio.toFixed(1)}× slower</strong> than those needing detail — ${formatDuration(ready.medianHoursToClose)} against ${formatDuration(detail.medianHoursToClose)}. The rubric is not predicting what it claims to, which is worth more attention than the tool itself.</p>`;
 }
 
+/**
+ * Whether telling an author what is missing actually gets the issue fixed.
+ * The Linter's entire premise, stated as a number.
+ */
+function feedbackPanel(f: FeedbackEffect): string {
+  if (!f.measured) {
+    return `<p class="note">Label history wasn't available, so there's no way to tell whether flagged issues got fixed.</p>`;
+  }
+  if (f.flagged === 0) {
+    return `<p class="note">Nothing has been flagged as needing work yet, so there's nothing to follow up on.</p>`;
+  }
+  const pct = Math.round((f.improved / f.flagged) * 100);
+  const timing = f.medianHoursToImprove !== null
+    ? ` Typically within <strong>${formatDuration(f.medianHoursToImprove)}</strong> of being flagged.`
+    : "";
+  return `
+    <div class="funnel">
+      <div class="stage"><div class="big">${f.flagged}</div><div class="cap">flagged as not ready</div></div>
+      <div class="arrow" aria-hidden="true">→</div>
+      <div class="stage"><div class="big">${f.improved}</div><div class="cap">later reached agent-ready</div></div>
+      <div class="stage pct"><div class="big">${pct}%</div><div class="cap">acted on the feedback</div></div>
+    </div>
+    <p class="note">${
+      pct >= 50
+        ? `Most flagged issues get fixed, so the comments are changing behaviour.${timing}`
+        : `Most flagged issues are still sitting unfixed. Either the feedback isn't landing, or nobody is coming back to it.${timing}`
+    }</p>`;
+}
+
+/** Issues opened per week, and how many of them ended up delegatable. */
+function trendChart(buckets: TrendBucket[]): string {
+  if (buckets.length < 2) {
+    return `<p class="note">Not enough weeks of history yet to show a trend.</p>`;
+  }
+  const max = Math.max(...buckets.map((b) => b.opened), 1);
+  const w = 100 / buckets.length;
+  const bars = buckets
+    .map((b, i) => {
+      const h = (b.opened / max) * 100;
+      const readyH = (b.ready / max) * 100;
+      const x = i * w;
+      return `
+        <g>
+          <rect x="${(x + w * 0.2).toFixed(2)}" y="${(100 - h).toFixed(2)}" width="${(w * 0.6).toFixed(2)}" height="${h.toFixed(2)}" fill="var(--line)" rx="0.6"></rect>
+          <rect x="${(x + w * 0.2).toFixed(2)}" y="${(100 - readyH).toFixed(2)}" width="${(w * 0.6).toFixed(2)}" height="${readyH.toFixed(2)}" fill="#1a7f37" rx="0.6"></rect>
+        </g>`;
+    })
+    .join("");
+  const labels = buckets
+    .map((b) => `<span>${escapeHtml(b.week.slice(5))}</span>`)
+    .join("");
+  return `
+    <div class="chart">
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Issues opened per week, with the delegatable share highlighted">${bars}</svg>
+      <div class="xaxis">${labels}</div>
+      <p class="note"><span class="key ready"></span> reached agent-ready &nbsp; <span class="key all"></span> opened</p>
+    </div>`;
+}
+
 export function renderReport(summary: Summary, repo: string): string {
   const max = Math.max(...summary.labels.map((l) => l.total), 1);
   const share = summary.mechanicalShare;
@@ -109,6 +168,20 @@ export function renderReport(summary: Summary, repo: string): string {
   footer { margin-top: 3rem; color: var(--muted); font-size: .82rem; }
   code { background: var(--panel); padding: .1em .35em; border-radius: 4px; font-size: .9em; }
   .wrap { overflow-x: auto; }
+  .note { color: var(--muted); font-size: .87rem; margin: .9rem 0 0; }
+  .funnel { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-top: 1.1rem; }
+  .stage { border: 1px solid var(--line); border-radius: 6px; padding: .8rem 1.1rem; background: var(--panel); min-width: 8.5rem; }
+  .stage .big { font-size: 1.6rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .stage .cap { color: var(--muted); font-size: .8rem; }
+  .stage.pct { margin-left: auto; }
+  .arrow { color: var(--muted); font-size: 1.2rem; }
+  .chart { margin-top: 1.1rem; }
+  .chart svg { width: 100%; height: 8rem; display: block; }
+  .xaxis { display: flex; margin-top: .35rem; color: var(--muted); font-size: .72rem; }
+  .xaxis span { flex: 1; text-align: center; }
+  .key { display: inline-block; width: .7rem; height: .7rem; border-radius: 2px; vertical-align: -1px; }
+  .key.ready { background: #1a7f37; }
+  .key.all { background: var(--line); }
 </style>
 </head>
 <body>
@@ -123,6 +196,12 @@ export function renderReport(summary: Summary, repo: string): string {
     <div class="card"><div class="big">${share === null ? "—" : `${Math.round(share * 100)}%`}</div><div class="cap">of split work is delegatable</div></div>
     <div class="card"><div class="big">${summary.untracked}</div><div class="cap">not yet scored</div></div>
   </div>
+
+  <h2>Does the feedback work?</h2>
+  ${feedbackPanel(summary.feedback)}
+
+  <h2>Issues opened per week</h2>
+  ${trendChart(summary.trend)}
 
   <h2>Where issues land</h2>
   <div class="wrap">

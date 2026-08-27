@@ -47,6 +47,24 @@ const issues = raw
     closedAt: i.closed_at,
   }));
 
+// Label history, so the report can say whether flagged issues got fixed.
+for (const issue of issues.slice(0, 300)) {
+  try {
+    const events = JSON.parse(
+      execFileSync("gh", ["api", "--paginate", `repos/${repo}/issues/${issue.number}/events?per_page=100`], {
+        encoding: "utf8",
+        maxBuffer: 16 * 1024 * 1024,
+      }).replace(/\]\s*\[/g, ","),
+    );
+    issue.history = events
+      .filter((e) => e.event === "labeled" || e.event === "unlabeled")
+      .map((e) => ({ label: e.label?.name, action: e.event, at: e.created_at }))
+      .filter((e) => e.label);
+  } catch {
+    // Leave history absent.
+  }
+}
+
 const summary = summarise(issues);
 writeFileSync(out, renderReport(summary, repo), "utf8");
 console.log(`${issues.length} issues -> ${summary.scored} scored, ${summary.untracked} unscored`);

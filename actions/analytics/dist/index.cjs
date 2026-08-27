@@ -24190,12 +24190,54 @@ var TRACKED_LABELS = [
   "not-in-codebase",
   "not-a-task"
 ];
+var NOT_READY = /* @__PURE__ */ new Set(["needs-detail", "not-in-codebase"]);
 function median(values) {
   if (values.length === 0)
     return null;
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+function measureFeedback(issues) {
+  const withHistory = issues.filter((i) => i.history && i.history.length > 0);
+  if (withHistory.length === 0) {
+    return { flagged: 0, improved: 0, medianHoursToImprove: null, measured: false };
+  }
+  let flagged = 0;
+  let improved = 0;
+  const durations = [];
+  for (const issue2 of withHistory) {
+    const events = [...issue2.history].sort((a, b) => a.at.localeCompare(b.at));
+    const firstFlag = events.find((e) => e.action === "labeled" && NOT_READY.has(e.label));
+    if (!firstFlag)
+      continue;
+    flagged += 1;
+    const becameReady = events.find((e) => e.action === "labeled" && e.label === "agent-ready" && e.at > firstFlag.at);
+    if (becameReady) {
+      improved += 1;
+      durations.push((new Date(becameReady.at).getTime() - new Date(firstFlag.at).getTime()) / 36e5);
+    }
+  }
+  return { flagged, improved, medianHoursToImprove: median(durations), measured: true };
+}
+function weekStart(iso) {
+  const d = new Date(iso);
+  const day = (d.getUTCDay() + 6) % 7;
+  d.setUTCDate(d.getUTCDate() - day);
+  return d.toISOString().slice(0, 10);
+}
+function buildTrend(issues, weeks = 8) {
+  const buckets = /* @__PURE__ */ new Map();
+  for (const issue2 of issues) {
+    const week = weekStart(issue2.createdAt);
+    const bucket = buckets.get(week) ?? { week, opened: 0, ready: 0 };
+    bucket.opened += 1;
+    if (issue2.labels.includes("agent-ready") || issue2.labels.includes("mechanical")) {
+      bucket.ready += 1;
+    }
+    buckets.set(week, bucket);
+  }
+  return [...buckets.values()].sort((a, b) => a.week.localeCompare(b.week)).slice(-weeks);
 }
 function hoursToClose(issue2) {
   if (!issue2.closedAt)
@@ -24221,6 +24263,8 @@ function summarise(issues, now = /* @__PURE__ */ new Date()) {
   const judgement = labels.find((l) => l.label === "judgement")?.total ?? 0;
   const routed = mechanical + judgement;
   return {
+    feedback: measureFeedback(issues),
+    trend: buildTrend(issues),
     scored: scoredIssues.length,
     untracked: issues.length - scoredIssues.length,
     labels,
@@ -24276,6 +24320,48 @@ function verdict(summary2) {
   const ratio = faster ? detail.medianHoursToClose / ready.medianHoursToClose : ready.medianHoursToClose / detail.medianHoursToClose;
   return faster ? `<p class="verdict good">Issues scored <strong>agent-ready</strong> close about <strong>${ratio.toFixed(1)}\xD7 faster</strong> than those needing detail \u2014 ${formatDuration(ready.medianHoursToClose)} against ${formatDuration(detail.medianHoursToClose)}. The rubric is predicting something real.</p>` : `<p class="verdict bad">Issues scored <strong>agent-ready</strong> are closing <strong>${ratio.toFixed(1)}\xD7 slower</strong> than those needing detail \u2014 ${formatDuration(ready.medianHoursToClose)} against ${formatDuration(detail.medianHoursToClose)}. The rubric is not predicting what it claims to, which is worth more attention than the tool itself.</p>`;
 }
+function feedbackPanel(f) {
+  if (!f.measured) {
+    return `<p class="note">Label history wasn't available, so there's no way to tell whether flagged issues got fixed.</p>`;
+  }
+  if (f.flagged === 0) {
+    return `<p class="note">Nothing has been flagged as needing work yet, so there's nothing to follow up on.</p>`;
+  }
+  const pct = Math.round(f.improved / f.flagged * 100);
+  const timing = f.medianHoursToImprove !== null ? ` Typically within <strong>${formatDuration(f.medianHoursToImprove)}</strong> of being flagged.` : "";
+  return `
+    <div class="funnel">
+      <div class="stage"><div class="big">${f.flagged}</div><div class="cap">flagged as not ready</div></div>
+      <div class="arrow" aria-hidden="true">\u2192</div>
+      <div class="stage"><div class="big">${f.improved}</div><div class="cap">later reached agent-ready</div></div>
+      <div class="stage pct"><div class="big">${pct}%</div><div class="cap">acted on the feedback</div></div>
+    </div>
+    <p class="note">${pct >= 50 ? `Most flagged issues get fixed, so the comments are changing behaviour.${timing}` : `Most flagged issues are still sitting unfixed. Either the feedback isn't landing, or nobody is coming back to it.${timing}`}</p>`;
+}
+function trendChart(buckets) {
+  if (buckets.length < 2) {
+    return `<p class="note">Not enough weeks of history yet to show a trend.</p>`;
+  }
+  const max = Math.max(...buckets.map((b) => b.opened), 1);
+  const w = 100 / buckets.length;
+  const bars = buckets.map((b, i) => {
+    const h = b.opened / max * 100;
+    const readyH = b.ready / max * 100;
+    const x = i * w;
+    return `
+        <g>
+          <rect x="${(x + w * 0.2).toFixed(2)}" y="${(100 - h).toFixed(2)}" width="${(w * 0.6).toFixed(2)}" height="${h.toFixed(2)}" fill="var(--line)" rx="0.6"></rect>
+          <rect x="${(x + w * 0.2).toFixed(2)}" y="${(100 - readyH).toFixed(2)}" width="${(w * 0.6).toFixed(2)}" height="${readyH.toFixed(2)}" fill="#1a7f37" rx="0.6"></rect>
+        </g>`;
+  }).join("");
+  const labels = buckets.map((b) => `<span>${escapeHtml(b.week.slice(5))}</span>`).join("");
+  return `
+    <div class="chart">
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Issues opened per week, with the delegatable share highlighted">${bars}</svg>
+      <div class="xaxis">${labels}</div>
+      <p class="note"><span class="key ready"></span> reached agent-ready &nbsp; <span class="key all"></span> opened</p>
+    </div>`;
+}
 function renderReport(summary2, repo) {
   const max = Math.max(...summary2.labels.map((l) => l.total), 1);
   const share = summary2.mechanicalShare;
@@ -24329,6 +24415,20 @@ function renderReport(summary2, repo) {
   footer { margin-top: 3rem; color: var(--muted); font-size: .82rem; }
   code { background: var(--panel); padding: .1em .35em; border-radius: 4px; font-size: .9em; }
   .wrap { overflow-x: auto; }
+  .note { color: var(--muted); font-size: .87rem; margin: .9rem 0 0; }
+  .funnel { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-top: 1.1rem; }
+  .stage { border: 1px solid var(--line); border-radius: 6px; padding: .8rem 1.1rem; background: var(--panel); min-width: 8.5rem; }
+  .stage .big { font-size: 1.6rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .stage .cap { color: var(--muted); font-size: .8rem; }
+  .stage.pct { margin-left: auto; }
+  .arrow { color: var(--muted); font-size: 1.2rem; }
+  .chart { margin-top: 1.1rem; }
+  .chart svg { width: 100%; height: 8rem; display: block; }
+  .xaxis { display: flex; margin-top: .35rem; color: var(--muted); font-size: .72rem; }
+  .xaxis span { flex: 1; text-align: center; }
+  .key { display: inline-block; width: .7rem; height: .7rem; border-radius: 2px; vertical-align: -1px; }
+  .key.ready { background: #1a7f37; }
+  .key.all { background: var(--line); }
 </style>
 </head>
 <body>
@@ -24343,6 +24443,12 @@ function renderReport(summary2, repo) {
     <div class="card"><div class="big">${share === null ? "\u2014" : `${Math.round(share * 100)}%`}</div><div class="cap">of split work is delegatable</div></div>
     <div class="card"><div class="big">${summary2.untracked}</div><div class="cap">not yet scored</div></div>
   </div>
+
+  <h2>Does the feedback work?</h2>
+  ${feedbackPanel(summary2.feedback)}
+
+  <h2>Issues opened per week</h2>
+  ${trendChart(summary2.trend)}
 
   <h2>Where issues land</h2>
   <div class="wrap">
@@ -24386,6 +24492,25 @@ async function run() {
         createdAt: issue2.created_at,
         closedAt: issue2.closed_at
       });
+    }
+  }
+  const HISTORY_LIMIT = 300;
+  for (const issue2 of issues.slice(0, HISTORY_LIMIT)) {
+    try {
+      const { data } = await octokit.rest.issues.listEvents({
+        owner,
+        repo,
+        issue_number: issue2.number,
+        per_page: 100
+      });
+      const history = [];
+      for (const event of data) {
+        if (event.event !== "labeled" && event.event !== "unlabeled") continue;
+        const label = event.label?.name;
+        if (label) history.push({ label, action: event.event, at: event.created_at });
+      }
+      issue2.history = history;
+    } catch {
     }
   }
   const summary2 = summarise(issues);
