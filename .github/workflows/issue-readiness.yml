@@ -2,7 +2,8 @@ name: Issue Readiness
 
 on:
   issues:
-    types: [opened]
+    # Re-score after an edit so acting on the feedback updates the verdict.
+    types: [opened, edited]
 
 permissions:
   issues: write

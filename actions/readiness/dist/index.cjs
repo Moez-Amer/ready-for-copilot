@@ -19228,12 +19228,12 @@ var require_lib = __commonJS({
             throw new Error("Client has already been disposed.");
           }
           const parsedUrl = new URL(requestUrl);
-          let info = this._prepareRequest(verb, parsedUrl, headers);
+          let info2 = this._prepareRequest(verb, parsedUrl, headers);
           const maxTries = this._allowRetries && RetryableHttpVerbs.includes(verb) ? this._maxRetries + 1 : 1;
           let numTries = 0;
           let response;
           do {
-            response = yield this.requestRaw(info, data);
+            response = yield this.requestRaw(info2, data);
             if (response && response.message && response.message.statusCode === HttpCodes2.Unauthorized) {
               let authenticationHandler;
               for (const handler2 of this.handlers) {
@@ -19243,7 +19243,7 @@ var require_lib = __commonJS({
                 }
               }
               if (authenticationHandler) {
-                return authenticationHandler.handleAuthentication(this, info, data);
+                return authenticationHandler.handleAuthentication(this, info2, data);
               } else {
                 return response;
               }
@@ -19266,8 +19266,8 @@ var require_lib = __commonJS({
                   }
                 }
               }
-              info = this._prepareRequest(verb, parsedRedirectUrl, headers);
-              response = yield this.requestRaw(info, data);
+              info2 = this._prepareRequest(verb, parsedRedirectUrl, headers);
+              response = yield this.requestRaw(info2, data);
               redirectsRemaining--;
             }
             if (!response.message.statusCode || !HttpResponseRetryCodes2.includes(response.message.statusCode)) {
@@ -19296,7 +19296,7 @@ var require_lib = __commonJS({
        * @param info
        * @param data
        */
-      requestRaw(info, data) {
+      requestRaw(info2, data) {
         return __awaiter4(this, void 0, void 0, function* () {
           return new Promise((resolve5, reject) => {
             function callbackForResult(err, res) {
@@ -19308,7 +19308,7 @@ var require_lib = __commonJS({
                 resolve5(res);
               }
             }
-            this.requestRawWithCallback(info, data, callbackForResult);
+            this.requestRawWithCallback(info2, data, callbackForResult);
           });
         });
       }
@@ -19318,12 +19318,12 @@ var require_lib = __commonJS({
        * @param data
        * @param onResult
        */
-      requestRawWithCallback(info, data, onResult) {
+      requestRawWithCallback(info2, data, onResult) {
         if (typeof data === "string") {
-          if (!info.options.headers) {
-            info.options.headers = {};
+          if (!info2.options.headers) {
+            info2.options.headers = {};
           }
-          info.options.headers["Content-Length"] = Buffer.byteLength(data, "utf8");
+          info2.options.headers["Content-Length"] = Buffer.byteLength(data, "utf8");
         }
         let callbackCalled = false;
         function handleResult(err, res) {
@@ -19332,7 +19332,7 @@ var require_lib = __commonJS({
             onResult(err, res);
           }
         }
-        const req = info.httpModule.request(info.options, (msg) => {
+        const req = info2.httpModule.request(info2.options, (msg) => {
           const res = new HttpClientResponse(msg);
           handleResult(void 0, res);
         });
@@ -19344,7 +19344,7 @@ var require_lib = __commonJS({
           if (socket) {
             socket.end();
           }
-          handleResult(new Error(`Request timeout: ${info.options.path}`));
+          handleResult(new Error(`Request timeout: ${info2.options.path}`));
         });
         req.on("error", function(err) {
           handleResult(err);
@@ -19380,27 +19380,27 @@ var require_lib = __commonJS({
         return this._getProxyAgentDispatcher(parsedUrl, proxyUrl);
       }
       _prepareRequest(method, requestUrl, headers) {
-        const info = {};
-        info.parsedUrl = requestUrl;
-        const usingSsl = info.parsedUrl.protocol === "https:";
-        info.httpModule = usingSsl ? https : http;
+        const info2 = {};
+        info2.parsedUrl = requestUrl;
+        const usingSsl = info2.parsedUrl.protocol === "https:";
+        info2.httpModule = usingSsl ? https : http;
         const defaultPort = usingSsl ? 443 : 80;
-        info.options = {};
-        info.options.host = info.parsedUrl.hostname;
-        info.options.port = info.parsedUrl.port ? parseInt(info.parsedUrl.port) : defaultPort;
-        info.options.path = (info.parsedUrl.pathname || "") + (info.parsedUrl.search || "");
-        info.options.method = method;
-        info.options.headers = this._mergeHeaders(headers);
+        info2.options = {};
+        info2.options.host = info2.parsedUrl.hostname;
+        info2.options.port = info2.parsedUrl.port ? parseInt(info2.parsedUrl.port) : defaultPort;
+        info2.options.path = (info2.parsedUrl.pathname || "") + (info2.parsedUrl.search || "");
+        info2.options.method = method;
+        info2.options.headers = this._mergeHeaders(headers);
         if (this.userAgent != null) {
-          info.options.headers["user-agent"] = this.userAgent;
+          info2.options.headers["user-agent"] = this.userAgent;
         }
-        info.options.agent = this._getAgent(info.parsedUrl);
+        info2.options.agent = this._getAgent(info2.parsedUrl);
         if (this.handlers) {
           for (const handler2 of this.handlers) {
-            handler2.prepareRequest(info.options);
+            handler2.prepareRequest(info2.options);
           }
         }
-        return info;
+        return info2;
       }
       _mergeHeaders(headers) {
         if (this.requestOptions && this.requestOptions.headers) {
@@ -21109,8 +21109,8 @@ var init_credentials = __esm({
       if (configDir) {
         return configDir;
       }
-      const os3 = getPlatformHeaders()["X-Stainless-OS"];
-      if (os3 === "Windows") {
+      const os4 = getPlatformHeaders()["X-Stainless-OS"];
+      if (os4 === "Windows") {
         const appData = readEnv("APPDATA");
         if (appData) {
           return path8.join(appData, "Anthropic");
@@ -23877,7 +23877,7 @@ var require_sha256 = __commonJS({
         return digest2;
       }
       exports3.hmac = hmac;
-      function fillBuffer(buffer, hmac2, info, counter) {
+      function fillBuffer(buffer, hmac2, info2, counter) {
         var num = counter[0];
         if (num === 0) {
           throw new Error("hkdf: cannot expand more");
@@ -23886,15 +23886,15 @@ var require_sha256 = __commonJS({
         if (num > 1) {
           hmac2.update(buffer);
         }
-        if (info) {
-          hmac2.update(info);
+        if (info2) {
+          hmac2.update(info2);
         }
         hmac2.update(counter);
         hmac2.finish(buffer);
         counter[0]++;
       }
       var hkdfSalt = new Uint8Array(exports3.digestLength);
-      function hkdf(key, salt, info, length) {
+      function hkdf(key, salt, info2, length) {
         if (salt === void 0) {
           salt = hkdfSalt;
         }
@@ -23909,7 +23909,7 @@ var require_sha256 = __commonJS({
         var out = new Uint8Array(length);
         for (var i6 = 0; i6 < length; i6++) {
           if (bufpos === buffer.length) {
-            fillBuffer(buffer, hmac_, info, counter);
+            fillBuffer(buffer, hmac_, info2, counter);
             bufpos = 0;
           }
           out[i6] = buffer[bufpos++];
@@ -73645,6 +73645,9 @@ function escapeProperty(s2) {
   return toCommandValue(s2).replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A").replace(/:/g, "%3A").replace(/,/g, "%2C");
 }
 
+// ../../node_modules/@actions/core/lib/core.js
+var os3 = __toESM(require("os"), 1);
+
 // ../../node_modules/@actions/http-client/lib/index.js
 var tunnel = __toESM(require_tunnel2(), 1);
 var import_undici = __toESM(require_undici(), 1);
@@ -74025,6 +74028,9 @@ function error(message, properties = {}) {
 }
 function warning(message, properties = {}) {
   issueCommand("warning", toCommandProperties(properties), message instanceof Error ? message.toString() : message);
+}
+function info(message) {
+  process.stdout.write(message + os3.EOL);
 }
 
 // ../../node_modules/@actions/github/lib/context.js
@@ -93779,8 +93785,25 @@ ${GROUNDING_RUBRIC}` : READINESS_RUBRIC,
 }
 
 // src/index.ts
-var AGENT_READY_LABEL = "agent-ready";
-var AGENT_READY_COLOR = "0e8a16";
+var LABELS = {
+  ready: {
+    name: "agent-ready",
+    color: "0e8a16",
+    description: "Scored 4/4 and matches the codebase -- safe to hand to a coding agent."
+  },
+  needsDetail: {
+    name: "needs-detail",
+    color: "fbca04",
+    description: "Scored below 4/4 on agent-readiness -- see the bot's suggestion."
+  },
+  notInCodebase: {
+    name: "not-in-codebase",
+    color: "b60205",
+    description: "Describes files or symbols that don't exist in this repository."
+  }
+};
+var MANAGED_LABELS = Object.values(LABELS).map((l4) => l4.name);
+var MARKER = "<!-- agent-readiness -->";
 function formatComment(result) {
   const suggestion = result.suggestion.trim();
   const grounding = result.grounded === false && result.groundingRationale ? `
@@ -93800,20 +93823,58 @@ ${suggestion}` : header) + grounding;
 
 ${suggestion}${grounding}`;
 }
-async function ensureLabelExists(octokit, owner, repo) {
+function labelFor(result) {
+  if (result.grounded === false) return LABELS.notInCodebase.name;
+  if (!result.confident) return null;
+  return result.score === 4 ? LABELS.ready.name : LABELS.needsDetail.name;
+}
+async function ensureLabelExists(octokit, owner, repo, name) {
+  const spec = Object.values(LABELS).find((l4) => l4.name === name);
+  if (!spec) return;
   try {
-    await octokit.rest.issues.getLabel({ owner, repo, name: AGENT_READY_LABEL });
+    await octokit.rest.issues.getLabel({ owner, repo, name });
   } catch (err) {
-    if (err.status !== 404) {
-      throw err;
+    if (err.status !== 404) throw err;
+    await octokit.rest.issues.createLabel({ owner, repo, ...spec });
+  }
+}
+async function syncLabels(octokit, owner, repo, issueNumber, desired) {
+  const { data: current } = await octokit.rest.issues.listLabelsOnIssue({
+    owner,
+    repo,
+    issue_number: issueNumber
+  });
+  const currentNames = current.map((l4) => l4.name);
+  for (const name of MANAGED_LABELS) {
+    if (name !== desired && currentNames.includes(name)) {
+      await octokit.rest.issues.removeLabel({ owner, repo, issue_number: issueNumber, name });
     }
-    await octokit.rest.issues.createLabel({
+  }
+  if (desired && !currentNames.includes(desired)) {
+    await ensureLabelExists(octokit, owner, repo, desired);
+    await octokit.rest.issues.addLabels({
       owner,
       repo,
-      name: AGENT_READY_LABEL,
-      color: AGENT_READY_COLOR,
-      description: "Scored 4/4 on the readiness rubric -- safe to hand to a coding agent."
+      issue_number: issueNumber,
+      labels: [desired]
     });
+  }
+}
+async function upsertComment(octokit, owner, repo, issueNumber, body) {
+  const withMarker = `${body}
+
+${MARKER}`;
+  const { data: comments } = await octokit.rest.issues.listComments({
+    owner,
+    repo,
+    issue_number: issueNumber,
+    per_page: 100
+  });
+  const existing = comments.find((c6) => c6.body?.includes(MARKER));
+  if (existing) {
+    await octokit.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body: withMarker });
+  } else {
+    await octokit.rest.issues.createComment({ owner, repo, issue_number: issueNumber, body: withMarker });
   }
 }
 async function run() {
@@ -93840,21 +93901,11 @@ ${body}`
     warning("Could not read repository context; scoring on issue text alone.");
   }
   const result = await scoreReadiness({ title, body, repoContext: repoContext ?? void 0 });
-  await octokit.rest.issues.createComment({
-    owner,
-    repo,
-    issue_number: issue3.number,
-    body: formatComment(result)
-  });
-  if (result.confident && result.score === 4 && result.grounded !== false) {
-    await ensureLabelExists(octokit, owner, repo);
-    await octokit.rest.issues.addLabels({
-      owner,
-      repo,
-      issue_number: issue3.number,
-      labels: [AGENT_READY_LABEL]
-    });
-  }
+  await upsertComment(octokit, owner, repo, issue3.number, formatComment(result));
+  await syncLabels(octokit, owner, repo, issue3.number, labelFor(result));
+  info(
+    `#${issue3.number}: ${result.score}/4 confident=${result.confident} grounded=${result.grounded} label=${labelFor(result) ?? "none"}`
+  );
 }
 run().catch((err) => {
   setFailed(err instanceof Error ? err.message : String(err));

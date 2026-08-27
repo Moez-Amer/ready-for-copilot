@@ -3,8 +3,34 @@ import * as github from "@actions/github";
 import { buildRepoContext } from "@issue-triage/repo-context";
 import { scoreReadiness, type ReadinessResult } from "@issue-triage/scorer";
 
-const AGENT_READY_LABEL = "agent-ready";
-const AGENT_READY_COLOR = "0e8a16";
+type Octokit = ReturnType<typeof github.getOctokit>;
+
+/**
+ * Every issue this bot scores ends up in exactly one of these states, so the
+ * board can be filtered by what an issue actually needs next.
+ */
+const LABELS = {
+  ready: {
+    name: "agent-ready",
+    color: "0e8a16",
+    description: "Scored 4/4 and matches the codebase -- safe to hand to a coding agent.",
+  },
+  needsDetail: {
+    name: "needs-detail",
+    color: "fbca04",
+    description: "Scored below 4/4 on agent-readiness -- see the bot's suggestion.",
+  },
+  notInCodebase: {
+    name: "not-in-codebase",
+    color: "b60205",
+    description: "Describes files or symbols that don't exist in this repository.",
+  },
+} as const;
+
+const MANAGED_LABELS: string[] = Object.values(LABELS).map((l) => l.name);
+
+/** Identifies this bot's own comment so re-scoring updates it in place. */
+const MARKER = "<!-- agent-readiness -->";
 
 function formatComment(result: ReadinessResult): string {
   const suggestion = result.suggestion.trim();
@@ -33,24 +59,89 @@ function formatComment(result: ReadinessResult): string {
   return `**Agent-readiness: ${result.score}/4**\n\n${suggestion}${grounding}`;
 }
 
+/** Which single label this result earns, or null when we can't judge. */
+function labelFor(result: ReadinessResult): string | null {
+  // A fluent issue about code that isn't there is the most important state to
+  // surface, so it outranks the score.
+  if (result.grounded === false) return LABELS.notInCodebase.name;
+  if (!result.confident) return null;
+  return result.score === 4 ? LABELS.ready.name : LABELS.needsDetail.name;
+}
+
 async function ensureLabelExists(
-  octokit: ReturnType<typeof github.getOctokit>,
+  octokit: Octokit,
   owner: string,
   repo: string,
+  name: string,
 ): Promise<void> {
+  const spec = Object.values(LABELS).find((l) => l.name === name);
+  if (!spec) return;
   try {
-    await octokit.rest.issues.getLabel({ owner, repo, name: AGENT_READY_LABEL });
+    await octokit.rest.issues.getLabel({ owner, repo, name });
   } catch (err) {
-    if ((err as { status?: number }).status !== 404) {
-      throw err;
+    if ((err as { status?: number }).status !== 404) throw err;
+    await octokit.rest.issues.createLabel({ owner, repo, ...spec });
+  }
+}
+
+/**
+ * Apply the one label this issue has earned and clear any other label this bot
+ * manages. Re-scoring an edited issue must not leave the previous verdict
+ * sitting next to the new one.
+ */
+async function syncLabels(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  issueNumber: number,
+  desired: string | null,
+): Promise<void> {
+  const { data: current } = await octokit.rest.issues.listLabelsOnIssue({
+    owner,
+    repo,
+    issue_number: issueNumber,
+  });
+  const currentNames = current.map((l) => l.name);
+
+  for (const name of MANAGED_LABELS) {
+    if (name !== desired && currentNames.includes(name)) {
+      await octokit.rest.issues.removeLabel({ owner, repo, issue_number: issueNumber, name });
     }
-    await octokit.rest.issues.createLabel({
+  }
+  if (desired && !currentNames.includes(desired)) {
+    await ensureLabelExists(octokit, owner, repo, desired);
+    await octokit.rest.issues.addLabels({
       owner,
       repo,
-      name: AGENT_READY_LABEL,
-      color: AGENT_READY_COLOR,
-      description: "Scored 4/4 on the readiness rubric -- safe to hand to a coding agent.",
+      issue_number: issueNumber,
+      labels: [desired],
     });
+  }
+}
+
+/**
+ * One verdict per issue, edited in place. Re-scoring after every edit would
+ * otherwise bury the issue under a column of near-identical bot comments.
+ */
+async function upsertComment(
+  octokit: Octokit,
+  owner: string,
+  repo: string,
+  issueNumber: number,
+  body: string,
+): Promise<void> {
+  const withMarker = `${body}\n\n${MARKER}`;
+  const { data: comments } = await octokit.rest.issues.listComments({
+    owner,
+    repo,
+    issue_number: issueNumber,
+    per_page: 100,
+  });
+  const existing = comments.find((c) => c.body?.includes(MARKER));
+  if (existing) {
+    await octokit.rest.issues.updateComment({ owner, repo, comment_id: existing.id, body: withMarker });
+  } else {
+    await octokit.rest.issues.createComment({ owner, repo, issue_number: issueNumber, body: withMarker });
   }
 }
 
@@ -89,24 +180,12 @@ async function run(): Promise<void> {
 
   const result = await scoreReadiness({ title, body, repoContext: repoContext ?? undefined });
 
-  await octokit.rest.issues.createComment({
-    owner,
-    repo,
-    issue_number: issue.number,
-    body: formatComment(result),
-  });
+  await upsertComment(octokit, owner, repo, issue.number, formatComment(result));
+  await syncLabels(octokit, owner, repo, issue.number, labelFor(result));
 
-  // A fluent issue about code that does not exist is exactly what should
-  // not carry an agent-ready label.
-  if (result.confident && result.score === 4 && result.grounded !== false) {
-    await ensureLabelExists(octokit, owner, repo);
-    await octokit.rest.issues.addLabels({
-      owner,
-      repo,
-      issue_number: issue.number,
-      labels: [AGENT_READY_LABEL],
-    });
-  }
+  core.info(
+    `#${issue.number}: ${result.score}/4 confident=${result.confident} grounded=${result.grounded} label=${labelFor(result) ?? "none"}`,
+  );
 }
 
 run().catch((err: unknown) => {
