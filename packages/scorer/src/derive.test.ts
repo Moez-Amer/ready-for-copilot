@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { deriveDelegationResult, deriveReadinessResult } from "./derive.js";
+import {
+  deriveAssessment,
+  deriveDelegationResult,
+  deriveReadinessResult,
+  titleAsksForWork,
+} from "./derive.js";
 import type { Delegation, Readiness, Signal } from "./schema.js";
 
 function signal(pass: boolean, confidence = 0.9): Signal {
@@ -8,6 +13,7 @@ function signal(pass: boolean, confidence = 0.9): Signal {
 
 function readiness(overrides: Partial<Readiness> = {}): Readiness {
   return {
+    kind: "change-request",
     outcome: signal(true),
     scope: signal(true),
     context: signal(true),
@@ -101,5 +107,29 @@ describe("deriveReadinessResult grounding", () => {
   it("keeps grounding out of the /4 score", () => {
     const raw = { ...readiness(), grounding: { pass: false, confidence: 0.95, rationale: "x" } };
     expect(deriveReadinessResult(raw).score).toBe(4);
+  });
+});
+
+describe("titleAsksForWork", () => {
+  it("treats an imperative title as work, however softly worded", () => {
+    expect(titleAsksForWork("make the docs better")).toBe(true);
+    expect(titleAsksForWork("the readme could use some work")).toBe(true);
+    expect(titleAsksForWork("Support GitLab")).toBe(true);
+  });
+
+  it("treats a question as not work", () => {
+    expect(titleAsksForWork("How does the grounding signal work?")).toBe(false);
+    expect(titleAsksForWork("Should we support GitLab as well?")).toBe(false);
+    expect(titleAsksForWork("Why is the score so low")).toBe(false);
+  });
+
+  it("overrides a non-work classification when the title asks for work", () => {
+    const raw = { ...delegation(), kind: "discussion" as const };
+    expect(deriveAssessment(raw, "make the docs better").kind).toBe("change-request");
+  });
+
+  it("leaves a genuine question alone", () => {
+    const raw = { ...delegation(), kind: "question" as const };
+    expect(deriveAssessment(raw, "How does this work?").kind).toBe("question");
   });
 });

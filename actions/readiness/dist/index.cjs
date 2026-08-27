@@ -92879,8 +92879,17 @@ function deriveDelegationResult(raw) {
     classification: mechanical ? "mechanical" : "judgement"
   };
 }
-function deriveAssessment(raw) {
+var INTERROGATIVE = /^\s*(how|what|why|when|where|which|who|whose|should|shall|could|can|would|will|is|are|was|were|does|do|did|has|have|any(one|body)?|thoughts|opinions|discussion|question|rfc|proposal)\b/i;
+function titleAsksForWork(title) {
+  if (title.includes("?"))
+    return false;
+  return !INTERROGATIVE.test(title);
+}
+function deriveAssessment(raw, title = "") {
   const readiness = deriveReadinessResult(raw);
+  if (readiness.kind !== "change-request" && title && titleAsksForWork(title)) {
+    readiness.kind = "change-request";
+  }
   const delegation = deriveDelegationResult(raw);
   const reason = !raw.blastRadius.pass ? raw.blastRadius.rationale : !raw.taskPattern.pass ? raw.taskPattern.rationale : null;
   return {
@@ -93828,7 +93837,7 @@ ${GROUNDING_RUBRIC}` : DELEGATION_RUBRIC,
   if (!response.parsed_output) {
     throw new Error("Assessment returned no parsed output");
   }
-  return deriveAssessment(response.parsed_output);
+  return deriveAssessment(response.parsed_output, issue3.title);
 }
 
 // src/index.ts

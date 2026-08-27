@@ -129,5 +129,5 @@ export async function assessIssue(issue: IssueText): Promise<AssessmentResult> {
   if (!response.parsed_output) {
     throw new Error("Assessment returned no parsed output");
   }
-  return deriveAssessment(response.parsed_output);
+  return deriveAssessment(response.parsed_output, issue.title);
 }

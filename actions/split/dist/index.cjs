@@ -93820,13 +93820,13 @@ ${formattedIssues}${suffix}`);
 // ../../packages/scorer/dist/rubric.js
 var READINESS_RUBRIC = `You evaluate whether a GitHub issue is well-specified enough for a coding agent to act on safely, without a human clarifying anything first.
 
-First decide what this issue is:
+First decide what this issue is. Apply one test: **if someone acted on this issue, would something in the project end up different?**
 
-- change-request: asks for a change to the code \u2014 a bug to fix, a feature to add, a chore to do.
-- question: asks for information or help, and would be answered rather than implemented.
-- discussion: raises a topic or proposal without requesting a specific change yet.
+- change-request: yes \u2014 code, docs, configuration, or tests would change. Choose this however vaguely the issue is written, and however softly it is phrased. "Make the docs better", "the readme could use some work", and "fix the login bug" are all change-requests: each points at something that should end up different. They are badly written, which is what the score is for, not a different kind of issue.
+- question: no \u2014 the author wants to understand something, and would be satisfied by an answer rather than a commit.
+- discussion: no \u2014 the author is asking whether something should be done, and wants opinions before anyone acts. "Should we support GitLab?" is a discussion; "Support GitLab" is a change-request.
 
-Issue trackers carry all three. Only a change-request is work, so score the signals below with that in mind: for a question or discussion they are largely irrelevant, and you should still fill them in honestly rather than inventing failures.
+Default to change-request. Only pick question or discussion when nothing in the project is being asked to change. Hedged wording is not a signal \u2014 "could use some work" still points at work. Misfiling a vague request as a discussion denies its author the feedback that would fix it.
 
 Score these four signals about the issue below. For each: pass/fail, a confidence from 0 to 1, and a one-sentence rationale.
 

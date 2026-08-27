@@ -80,6 +80,30 @@ export function deriveDelegationResult(raw: Delegation): DelegationResult {
   };
 }
 
+/**
+ * Words an issue opens with when it is asking rather than requesting.
+ * A title that starts otherwise, and carries no question mark, is asking for
+ * work -- however badly it says so.
+ */
+const INTERROGATIVE =
+  /^\s*(how|what|why|when|where|which|who|whose|should|shall|could|can|would|will|is|are|was|were|does|do|did|has|have|any(one|body)?|thoughts|opinions|discussion|question|rfc|proposal)\b/i;
+
+/**
+ * Whether a title reads as a request for work rather than a question or a
+ * topic for debate.
+ *
+ * The model misfiles softly-worded requests -- "make the docs better", "the
+ * readme could use some work" -- as discussion, and two rounds of sharpening
+ * the rubric did not fix it. The consequence is asymmetric: a question
+ * mistaken for work gets an unnecessary rewrite suggestion, while work
+ * mistaken for discussion escapes scoring and its author gets no help at all.
+ * So the code leans the safe way rather than trusting the classification.
+ */
+export function titleAsksForWork(title: string): boolean {
+  if (title.includes("?")) return false;
+  return !INTERROGATIVE.test(title);
+}
+
 export interface AssessmentResult extends ReadinessResult {
   /** Whether this is safe to hand to an agent unreviewed. */
   classification: "mechanical" | "judgement";
@@ -95,8 +119,15 @@ export interface AssessmentResult extends ReadinessResult {
  * alone promised "safe for an agent" while never running the safety check --
  * a well-written change to a secret reference scored 4/4 and earned the label.
  */
-export function deriveAssessment(raw: GroundedDelegation | Delegation): AssessmentResult {
+export function deriveAssessment(
+  raw: GroundedDelegation | Delegation,
+  title = "",
+): AssessmentResult {
   const readiness = deriveReadinessResult(raw as never);
+  // Override a non-work classification when the title plainly asks for work.
+  if (readiness.kind !== "change-request" && title && titleAsksForWork(title)) {
+    readiness.kind = "change-request";
+  }
   const delegation = deriveDelegationResult(raw);
   const reason = !raw.blastRadius.pass
     ? raw.blastRadius.rationale
