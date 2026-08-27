@@ -45,6 +45,7 @@ It posts **one comment** — a score and a single suggested rewrite of the weake
 | `needs-human` | Well specified, but touches something an agent shouldn't change unreviewed |
 | `needs-detail` | Scored below 4/4 — the comment says what's missing |
 | `not-in-codebase` | Reads as ready, but describes code that isn't there |
+| `not-a-task` | A question or discussion rather than a change request |
 
 Editing an issue re-scores it and updates the label in place, so acting on the feedback moves the issue along. An edit that doesn't change the meaningful content costs nothing.
 
@@ -61,6 +62,12 @@ It declines rather than making things worse, when:
 It also skips any sub-issue an **open issue already covers**, and caps decomposition at 8.
 
 > `/split` is ordinary comment text, not a registered GitHub command, so it won't appear in the comment box's autocomplete. Type it, press <kbd>Esc</kbd> to dismiss the popup, then comment.
+
+### The report
+
+A third action builds a static page showing where issues land, and whether the rubric predicts anything: it compares median time-to-close for `agent-ready` against `needs-detail`. If well-scored issues don't actually resolve faster, the rubric is wrong — which is a more useful finding than the tool.
+
+Add `.github/workflows/issue-report.yml` (see the file in this repository), enable **Settings → Pages → Source: GitHub Actions**, and it publishes nightly. Run it on demand from the Actions tab.
 
 ## Setup
 
@@ -147,22 +154,22 @@ One model call per issue opened or meaningfully edited, and one per sub-issue du
 
 - **Copilot assignment is unverified.** The code uses the `replaceActorsForAssignable` mutation, but it has only ever been exercised on repositories without the coding agent enabled, where it takes the graceful-degradation path: the sub-issue is labelled `mechanical` and left unassigned.
 - **Sub-issues aren't Linter-scored.** GitHub doesn't trigger workflows for actions taken with `GITHUB_TOKEN`, so issues created by `/split` don't fire the readiness workflow. They're labelled by `/split` itself instead. Supplying a PAT as `github-token` would change this.
-- **Questions get treated as tasks.** The Linter assumes every issue is a unit of work, so a genuine question scores badly and gets `needs-detail`.
-- **Duplicate detection compares titles only.** Two sub-issues describing the same work under different titles would both be created.
+- **Repository context is re-sent on every call.** `/split` sends the file tree once to decompose and again for each sub-issue it classifies. Prompt caching would fix this; it isn't implemented yet.
 - **Code search can be unavailable** on new or unindexed repositories. Grounding degrades to file-path checking; unverified is never treated as absent.
 
 ## Development
 
 ```bash
 npm install
-npm run build     # type-check and bundle both actions
+npm run build     # type-check and bundle every action
 npm test          # unit tests (no API calls)
 ```
 
 The repository is an npm workspace:
 
 - `packages/scorer` — the rubric, schemas, and model calls. Knows nothing about GitHub.
-- `packages/repo-context` — reads the repository and detects duplicate titles. Knows nothing about the model.
-- `actions/readiness`, `actions/split` — thin GitHub wrappers over both.
+- `packages/repo-context` — reads the repository and detects duplicates. Knows nothing about the model.
+- `packages/analytics` — turns issue history into the report. Pure functions and one HTML renderer.
+- `actions/readiness`, `actions/split`, `actions/analytics` — thin GitHub wrappers over the packages.
 
 `actions/*/dist/*.cjs` is committed deliberately: GitHub runs actions straight from the checked-out repository with no build step.

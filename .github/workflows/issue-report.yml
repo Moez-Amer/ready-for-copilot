@@ -1,0 +1,36 @@
+name: Issue Triage Report
+
+on:
+  schedule:
+    # Nightly. The report reads issue history, which changes slowly.
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+permissions:
+  issues: read
+  contents: read
+  pages: write
+  id-token: write
+
+# A second run mid-deploy would race the first.
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  report:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./actions/analytics
+        with:
+          output: public/index.html
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: public
+      - id: deploy
+        uses: actions/deploy-pages@v4
