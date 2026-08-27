@@ -1,5 +1,13 @@
 export const READINESS_RUBRIC = `You evaluate whether a GitHub issue is well-specified enough for a coding agent to act on safely, without a human clarifying anything first.
 
+First decide what this issue is:
+
+- change-request: asks for a change to the code — a bug to fix, a feature to add, a chore to do.
+- question: asks for information or help, and would be answered rather than implemented.
+- discussion: raises a topic or proposal without requesting a specific change yet.
+
+Issue trackers carry all three. Only a change-request is work, so score the signals below with that in mind: for a question or discussion they are largely irrelevant, and you should still fill them in honestly rather than inventing failures.
+
 Score these four signals about the issue below. For each: pass/fail, a confidence from 0 to 1, and a one-sentence rationale.
 
 - outcome: Would you know when this issue is done? Pass only if there is a concrete, checkable way to tell.

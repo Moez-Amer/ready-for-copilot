@@ -13,6 +13,8 @@ function minConfidence(signals: Signal[]): number {
 
 export interface ReadinessResult {
   raw: Readiness;
+  /** What the author is doing: asking for a change, asking a question, or raising a topic. */
+  kind: Readiness["kind"];
   /** Count of the four Layer A signals that passed, 0-4. */
   score: number;
   /** False if the model wasn't confident enough in its own judgment to trust the score. */
@@ -34,6 +36,7 @@ export function deriveReadinessResult(raw: Readiness | GroundedReadiness): Readi
   const grounding = "grounding" in raw ? raw.grounding : null;
   return {
     raw,
+    kind: raw.kind,
     score: layerA.filter((s) => s.pass).length,
     confident: minConfidence(layerA) >= CONFIDENCE_THRESHOLD,
     suggestion: raw.suggestion,

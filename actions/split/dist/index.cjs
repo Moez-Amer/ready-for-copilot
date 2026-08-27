@@ -78242,12 +78242,25 @@ function containment(candidate, existing) {
   return shared / candidateTokens.size;
 }
 var DUPLICATE_THRESHOLD = 0.7;
+var BODY_THRESHOLD = 0.6;
+var PARTIAL_TITLE_THRESHOLD = 0.45;
+var BODY_ALONE_THRESHOLD = 0.75;
 function findDuplicate(candidate, existing, threshold = DUPLICATE_THRESHOLD) {
+  const proposed = typeof candidate === "string" ? { title: candidate } : candidate;
   let best = null;
-  let bestScore = threshold;
+  let bestScore = 0;
   for (const issue3 of existing) {
-    const score = containment(candidate, issue3.title);
-    if (score >= bestScore) {
+    const titleScore = containment(proposed.title, issue3.title);
+    let score = titleScore >= threshold ? titleScore : 0;
+    if (!score && proposed.body && issue3.body) {
+      const bodyScore = containment(proposed.body, issue3.body);
+      if (bodyScore >= BODY_ALONE_THRESHOLD) {
+        score = bodyScore;
+      } else if (titleScore >= PARTIAL_TITLE_THRESHOLD && bodyScore >= BODY_THRESHOLD) {
+        score = (titleScore + bodyScore) / 2;
+      }
+    }
+    if (score > bestScore) {
       best = issue3;
       bestScore = score;
     }
@@ -92850,7 +92863,9 @@ var SignalSchema = external_exports.object({
   confidence: external_exports.number().min(0).max(1).describe("How sure you are of this pass/fail call, 0-1 \u2014 NOT how good the issue is. A signal that is clearly absent is a CONFIDENT fail (0.8-1.0), not an uncertain one. Reserve low values for cases where you genuinely cannot tell either way."),
   rationale: external_exports.string().describe("One short sentence explaining the judgment.")
 });
+var IssueKindSchema = external_exports.enum(["change-request", "question", "discussion"]).describe("change-request = asks for a change to the code (bug, feature, chore). question = asks for information or help. discussion = raises a topic without requesting a specific change.");
 var ReadinessSchema = external_exports.object({
+  kind: IssueKindSchema,
   outcome: SignalSchema.describe("Would you know when this issue is done?"),
   scope: SignalSchema.describe("Is this ONE change? Several related changes are still several changes -- a list of distinct edits fails this even when they share a theme or a file."),
   context: SignalSchema.describe("Are the relevant files or reproduction steps identified in this repo (not assumed knowledge)?"),
@@ -92914,6 +92929,7 @@ function deriveReadinessResult(raw) {
   const grounding = "grounding" in raw ? raw.grounding : null;
   return {
     raw,
+    kind: raw.kind,
     score: layerA.filter((s2) => s2.pass).length,
     confident: minConfidence(layerA) >= CONFIDENCE_THRESHOLD,
     suggestion: raw.suggestion,
@@ -93804,6 +93820,14 @@ ${formattedIssues}${suffix}`);
 // ../../packages/scorer/dist/rubric.js
 var READINESS_RUBRIC = `You evaluate whether a GitHub issue is well-specified enough for a coding agent to act on safely, without a human clarifying anything first.
 
+First decide what this issue is:
+
+- change-request: asks for a change to the code \u2014 a bug to fix, a feature to add, a chore to do.
+- question: asks for information or help, and would be answered rather than implemented.
+- discussion: raises a topic or proposal without requesting a specific change yet.
+
+Issue trackers carry all three. Only a change-request is work, so score the signals below with that in mind: for a question or discussion they are largely irrelevant, and you should still fill them in honestly rather than inventing failures.
+
 Score these four signals about the issue below. For each: pass/fail, a confidence from 0 to 1, and a one-sentence rationale.
 
 - outcome: Would you know when this issue is done? Pass only if there is a concrete, checkable way to tell.
@@ -93982,7 +94006,7 @@ async function listOpenIssues(octokit, owner, repo, exclude) {
       state: "open",
       per_page: 100
     });
-    return data.filter((i6) => i6.number !== exclude && !i6.pull_request).map((i6) => ({ number: i6.number, title: i6.title }));
+    return data.filter((i6) => i6.number !== exclude && !i6.pull_request).map((i6) => ({ number: i6.number, title: i6.title, body: i6.body }));
   } catch (err) {
     warning(
       `Could not list open issues; duplicates may be created: ${err instanceof Error ? err.message : String(err)}`
@@ -94149,7 +94173,7 @@ ${body}`
   const proposed = await decomposeIssue({ title, body, repoContext: context3 }, openIssueList);
   const skipped = [];
   const subIssues = proposed.filter((s2) => {
-    const existing = findDuplicate(s2.title, openIssues);
+    const existing = findDuplicate({ title: s2.title, body: s2.body }, openIssues);
     if (existing) {
       skipped.push({ subIssue: s2, existing });
       info(`Skipping "${s2.title}" -- already covered by #${existing.number}`);

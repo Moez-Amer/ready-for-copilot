@@ -54,3 +54,43 @@ describe("findDuplicate", () => {
     expect(containment(OPEN[0]!.title, OPEN[0]!.title)).toBe(1);
   });
 });
+
+describe("findDuplicate with bodies", () => {
+  const open = [
+    {
+      number: 12,
+      title: "Guard the split job against overlapping runs",
+      body: "Add a concurrency group keyed on the issue number to the split job in .github/workflows/issue-split.yml so two rapid comments cannot race.",
+    },
+  ];
+
+  it("catches the same work filed under a different title", () => {
+    const found = findDuplicate(
+      {
+        title: "Add concurrency group to .github/workflows/issue-split.yml",
+        body: "Add a concurrency group keyed on the issue number to the split job in .github/workflows/issue-split.yml so two rapid comments cannot race.",
+      },
+      open,
+    );
+    expect(found?.number).toBe(12);
+  });
+
+  it("does not match different work that merely touches the same file", () => {
+    const found = findDuplicate(
+      {
+        title: "Add timeout-minutes to the split job",
+        body: "Add `timeout-minutes: 10` to the split job in .github/workflows/issue-split.yml, directly below its runs-on line. Done when the file contains that setting.",
+      },
+      open,
+    );
+    expect(found).toBeNull();
+  });
+
+  it("still works when no bodies are available", () => {
+    const found = findDuplicate(
+      { title: "Guard the split job against overlapping runs" },
+      [{ number: 12, title: "Guard the split job against overlapping runs" }],
+    );
+    expect(found?.number).toBe(12);
+  });
+});

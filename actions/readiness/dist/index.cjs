@@ -92790,7 +92790,9 @@ var SignalSchema = external_exports.object({
   confidence: external_exports.number().min(0).max(1).describe("How sure you are of this pass/fail call, 0-1 \u2014 NOT how good the issue is. A signal that is clearly absent is a CONFIDENT fail (0.8-1.0), not an uncertain one. Reserve low values for cases where you genuinely cannot tell either way."),
   rationale: external_exports.string().describe("One short sentence explaining the judgment.")
 });
+var IssueKindSchema = external_exports.enum(["change-request", "question", "discussion"]).describe("change-request = asks for a change to the code (bug, feature, chore). question = asks for information or help. discussion = raises a topic without requesting a specific change.");
 var ReadinessSchema = external_exports.object({
+  kind: IssueKindSchema,
   outcome: SignalSchema.describe("Would you know when this issue is done?"),
   scope: SignalSchema.describe("Is this ONE change? Several related changes are still several changes -- a list of distinct edits fails this even when they share a theme or a file."),
   context: SignalSchema.describe("Are the relevant files or reproduction steps identified in this repo (not assumed knowledge)?"),
@@ -92854,6 +92856,7 @@ function deriveReadinessResult(raw) {
   const grounding = "grounding" in raw ? raw.grounding : null;
   return {
     raw,
+    kind: raw.kind,
     score: layerA.filter((s2) => s2.pass).length,
     confident: minConfidence(layerA) >= CONFIDENCE_THRESHOLD,
     suggestion: raw.suggestion,
@@ -93846,6 +93849,11 @@ var LABELS = {
     color: "b60205",
     description: "Describes files or symbols that don't exist in this repository."
   },
+  notATask: {
+    name: "not-a-task",
+    color: "c5def5",
+    description: "A question or discussion rather than a change request -- not scored as work."
+  },
   needsHuman: {
     name: "needs-human",
     color: "5319e7",
@@ -93860,6 +93868,10 @@ ${body}`.replace(/\s+/g, " ").trim().toLowerCase();
   return (0, import_node_crypto9.createHash)("sha256").update(normalised).digest("hex").slice(0, 16);
 }
 function formatComment(result) {
+  if (result.kind !== "change-request") {
+    const noun = result.kind === "question" ? "a question" : "a discussion";
+    return `This reads as ${noun} rather than a request for a change, so I haven't scored it for agent-readiness. If some of it should become work, opening a separate issue for that part will get it scored.`;
+  }
   const suggestion = result.suggestion.trim();
   const grounding = result.grounded === false && result.groundingRationale ? `
 
@@ -93888,6 +93900,7 @@ ${suggestion}` : header) + grounding;
 ${suggestion}${grounding}`;
 }
 function labelFor(result) {
+  if (result.kind !== "change-request") return LABELS.notATask.name;
   if (!result.confident) return null;
   if (result.grounded === false && result.score >= 3) return LABELS.notInCodebase.name;
   if (result.score < 4) return LABELS.needsDetail.name;

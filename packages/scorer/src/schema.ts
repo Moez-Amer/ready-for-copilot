@@ -15,8 +15,22 @@ export const SignalSchema = z.object({
 });
 export type Signal = z.infer<typeof SignalSchema>;
 
+/**
+ * What the author is actually doing. Issue trackers carry questions and
+ * discussion alongside work, and scoring a question against a work rubric
+ * tells its author they wrote a bad task when they did not write a task at
+ * all.
+ */
+export const IssueKindSchema = z
+  .enum(["change-request", "question", "discussion"])
+  .describe(
+    "change-request = asks for a change to the code (bug, feature, chore). question = asks for information or help. discussion = raises a topic without requesting a specific change.",
+  );
+export type IssueKind = z.infer<typeof IssueKindSchema>;
+
 // Layer A: is the issue well-specified enough to act on at all.
 export const ReadinessSchema = z.object({
+  kind: IssueKindSchema,
   outcome: SignalSchema.describe("Would you know when this issue is done?"),
   scope: SignalSchema.describe(
     "Is this ONE change? Several related changes are still several changes -- a list of distinct edits fails this even when they share a theme or a file.",

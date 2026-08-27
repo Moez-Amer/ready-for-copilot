@@ -105,7 +105,7 @@ async function listOpenIssues(
     });
     return data
       .filter((i) => i.number !== exclude && !i.pull_request)
-      .map((i) => ({ number: i.number, title: i.title }));
+      .map((i) => ({ number: i.number, title: i.title, body: i.body }));
   } catch (err) {
     core.warning(
       `Could not list open issues; duplicates may be created: ${err instanceof Error ? err.message : String(err)}`,
@@ -352,7 +352,7 @@ async function run(): Promise<void> {
   // anyway. Enforce it here instead of hoping.
   const skipped: Array<{ subIssue: SubIssue; existing: ExistingIssue }> = [];
   const subIssues = proposed.filter((s) => {
-    const existing = findDuplicate(s.title, openIssues);
+    const existing = findDuplicate({ title: s.title, body: s.body }, openIssues);
     if (existing) {
       skipped.push({ subIssue: s, existing });
       core.info(`Skipping "${s.title}" -- already covered by #${existing.number}`);

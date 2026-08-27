@@ -26,6 +26,11 @@ const LABELS = {
     color: "b60205",
     description: "Describes files or symbols that don't exist in this repository.",
   },
+  notATask: {
+    name: "not-a-task",
+    color: "c5def5",
+    description: "A question or discussion rather than a change request -- not scored as work.",
+  },
   needsHuman: {
     name: "needs-human",
     color: "5319e7",
@@ -49,6 +54,11 @@ function contentHash(title: string, body: string): string {
 }
 
 function formatComment(result: AssessmentResult): string {
+  if (result.kind !== "change-request") {
+    const noun = result.kind === "question" ? "a question" : "a discussion";
+    return `This reads as ${noun} rather than a request for a change, so I haven't scored it for agent-readiness. If some of it should become work, opening a separate issue for that part will get it scored.`;
+  }
+
   const suggestion = result.suggestion.trim();
   // Grounding is reported separately from the score: the score is about how
   // the issue is written, grounding is about whether it is true. A 4/4 that
@@ -91,6 +101,7 @@ function formatComment(result: AssessmentResult): string {
  * code that isn't there.
  */
 function labelFor(result: AssessmentResult): string | null {
+  if (result.kind !== "change-request") return LABELS.notATask.name;
   if (!result.confident) return null;
   // For a broadly well-formed issue, pointing at code that isn't there is the
   // bigger problem than any remaining detail. For a poorly-formed one it isn't:
