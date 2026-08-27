@@ -62184,7 +62184,7 @@ var require_dist_cjs22 = __commonJS({
     var { setCredentialFeature: setCredentialFeature2 } = (init_client4(), __toCommonJS(client_exports2));
     var { CredentialsProviderError: CredentialsProviderError2, parseKnownFiles: parseKnownFiles2, getProfileName: getProfileName2 } = (init_config2(), __toCommonJS(config_exports));
     var { HttpRequest: HttpRequest4 } = (init_protocols(), __toCommonJS(protocols_exports));
-    var { createHash: createHash7, createPrivateKey, createPublicKey, sign: sign2 } = require("node:crypto");
+    var { createHash: createHash8, createPrivateKey, createPublicKey, sign: sign2 } = require("node:crypto");
     var { promises: promises3 } = require("node:fs");
     var { homedir: homedir2 } = require("node:os");
     var { dirname: dirname5, join: join10 } = require("node:path");
@@ -62353,7 +62353,7 @@ var require_dist_cjs22 = __commonJS({
       getTokenFilePath() {
         const directory = process.env.AWS_LOGIN_CACHE_DIRECTORY ?? join10(homedir2(), ".aws", "login", "cache");
         const loginSessionBytes = Buffer.from(this.loginSession, "utf8");
-        const loginSessionSha256 = createHash7("sha256").update(loginSessionBytes).digest("hex");
+        const loginSessionSha256 = createHash8("sha256").update(loginSessionBytes).digest("hex");
         return join10(directory, `${loginSessionSha256}.json`);
       }
       derToRawSignature(derSignature) {
@@ -92804,6 +92804,9 @@ var DelegationSchema = ReadinessSchema.extend({
   taskPattern: SignalSchema.describe("Pass = this is a recognizable, previously-common kind of change (rename, import fix, config bump, dependency bump, test/snapshot update), not novel or design-driven work."),
   blastRadius: SignalSchema.describe("CATEGORICAL, not a risk judgment. Fail if the change touches auth, database schema/data migrations (including a 'simple' column rename), billing, public API surfaces, or adds/removes/replaces an external dependency. Simplicity is not an exemption. Sole exception: a version bump of a dependency already in use.")
 });
+var GroundedDelegationSchema = DelegationSchema.extend({
+  grounding: GroundedReadinessSchema.shape.grounding
+});
 
 // ../../packages/scorer/dist/decompose.js
 var MAX_SUB_ISSUES = 8;
@@ -92858,6 +92861,29 @@ function deriveReadinessResult(raw) {
     // the signal should only ever block delegation when it is sure.
     grounded: grounding === null ? null : grounding.confidence < CONFIDENCE_THRESHOLD ? null : grounding.pass,
     groundingRationale: grounding && !grounding.pass ? grounding.rationale : null
+  };
+}
+function deriveDelegationResult(raw) {
+  const layerA = [raw.outcome, raw.scope, raw.context, raw.ambiguity];
+  const layerB = [raw.taskPattern, raw.blastRadius];
+  const layerAScore = layerA.filter((s2) => s2.pass).length;
+  const confident = minConfidence([...layerA, ...layerB]) >= CONFIDENCE_THRESHOLD;
+  const mechanical = confident && layerAScore === 4 && raw.taskPattern.pass && raw.blastRadius.pass;
+  return {
+    raw,
+    layerAScore,
+    confident,
+    classification: mechanical ? "mechanical" : "judgement"
+  };
+}
+function deriveAssessment(raw) {
+  const readiness = deriveReadinessResult(raw);
+  const delegation = deriveDelegationResult(raw);
+  const reason = !raw.blastRadius.pass ? raw.blastRadius.rationale : !raw.taskPattern.pass ? raw.taskPattern.rationale : null;
+  return {
+    ...readiness,
+    classification: delegation.classification,
+    judgementReason: delegation.classification === "judgement" ? reason : null
   };
 }
 
@@ -93726,20 +93752,6 @@ ${formattedIssues}${suffix}`);
 }
 
 // ../../packages/scorer/dist/rubric.js
-var READINESS_RUBRIC = `You evaluate whether a GitHub issue is well-specified enough for a coding agent to act on safely, without a human clarifying anything first.
-
-Score these four signals about the issue below. For each: pass/fail, a confidence from 0 to 1, and a one-sentence rationale.
-
-- outcome: Would you know when this issue is done? Pass only if there is a concrete, checkable way to tell.
-- scope: Is this ONE change? Changes that share a theme are still separate changes \u2014 a list of several distinct edits fails this signal even when they are all related, all in the same file, or all part of the same effort. Ask whether one person could land this in one focused commit without deciding anything else along the way. If the issue enumerates multiple edits, or mixes doing something with deciding something, scope fails.
-- context: Are the relevant files, repo location, or reproduction steps identified \u2014 inside this repository, not assumed knowledge?
-- ambiguity: Is the issue free of undefined or subjective terms doing the real work (e.g. "fix the bug", "make it better")?
-
-Then write one concrete rewrite suggestion aimed at whichever signal scored weakest (lowest confidence, or a fail). If all four signals clearly pass, return an empty string for the suggestion.
-
-One special case: if the issue's main problem is that it bundles several separate changes together \u2014 scope fails, but the individual pieces are each described concretely \u2014 say so and suggest commenting \`/split\` on the issue to break it into sub-issues, rather than suggesting a rewrite.
-
-On confidence: confidence measures how sure you are of the pass/fail call itself, NOT how good the issue is. An issue that plainly lacks a signal is a CONFIDENT fail \u2014 score it pass=false with high confidence (0.8-1.0). "Fix the login bug" fails all four signals confidently; it is not an uncertain case. Reserve low confidence (below 0.6) for when you genuinely cannot tell either way, such as an issue referring to files, discussions, or context you cannot see. Do not assume any information beyond what's in the title and body.`;
 var GROUNDING_RUBRIC = `
 You are also given context about what this repository actually contains: its file layout, and the result of looking up every path and symbol this issue names. Use it to score one more signal:
 
@@ -93750,6 +93762,34 @@ You are also given context about what this repository actually contains: its fil
   * Where a lookup says "could not verify", do not treat that as a failure. Unknown is not the same as absent.
 
 An issue can be written beautifully and still fail grounding. That is the point of this signal: a fluent description of code that is not there is exactly the kind of issue that wastes an agent's time.`;
+var DELEGATION_RUBRIC = `You evaluate a sub-issue to decide whether it is safe to hand to an autonomous coding agent with no human review of the plan, or whether a human should own it instead.
+
+First, score the same four readiness signals as below: outcome, scope, context, ambiguity.
+
+- outcome: Would you know when this issue is done? Pass only if there is a concrete, checkable way to tell.
+- scope: Is this ONE change? Changes that share a theme are still separate changes \u2014 a list of several distinct edits fails this signal even when they are all related, all in the same file, or all part of the same effort. Ask whether one person could land this in one focused commit without deciding anything else along the way. If the issue enumerates multiple edits, or mixes doing something with deciding something, scope fails.
+- context: Are the relevant files, repo location, or reproduction steps identified \u2014 inside this repository, not assumed knowledge?
+- ambiguity: Is the issue free of undefined or subjective terms doing the real work (e.g. "fix the bug", "make it better")?
+
+Then score two additional signals that are about safety, not clarity:
+
+- taskPattern: Is this a recognizable, previously-common kind of change (e.g. rename, import fix, config bump, dependency version bump, test/snapshot update) rather than novel or design-driven work? Pass = yes, it's a routine pattern.
+- blastRadius: This is a CATEGORICAL test, not a risk assessment. Fail it if the change touches ANY of these, regardless of how simple, routine, or low-risk the specific change seems:
+    * authentication or authorization
+    * database schema or data migrations \u2014 a schema migration is a data migration even when the change is "just" a column rename, an added index, or a default value
+    * billing or payments
+    * public API surfaces, including response shapes consumed by third parties
+    * adding, removing, or replacing an external dependency, or changing which external service is called
+  Do not reason your way past this list. "It's only a rename", "this migration is trivial", and "the interface stays the same" are not exemptions \u2014 the category is what matters, because these are the changes where an unreviewed mistake is expensive to undo.
+  One narrow exception: a routine version bump of a dependency already in use (same interface, patch/minor update) does NOT fail this signal. The risk there is changing *what* the code depends on, not maintaining an existing pin.
+
+If repository context is included below, use it when judging blastRadius: check whether the files this sub-issue actually names are auth, migration, billing, or public-API files, rather than inferring from their names. A file called \`helper.ts\` that holds session logic is auth; a file called \`auth-colors.css\` is not.
+
+Bias toward failing taskPattern or blastRadius when you are unsure \u2014 a false "safe" here means an agent ships an unreviewed change into something sensitive.
+
+On confidence: confidence measures how sure you are of the pass/fail call itself, NOT how good or safe the sub-issue is. A signal that plainly fails is a CONFIDENT fail (0.8-1.0), not an uncertain one. Reserve low confidence (below 0.6) for when you genuinely cannot tell either way, such as a sub-issue referring to files or context you cannot see.
+
+Also fill in the "suggestion" field as one concrete rewrite suggestion aimed at whichever of the four readiness signals scored weakest. Empty string if all four clearly pass.`;
 
 // ../../packages/scorer/dist/client.js
 var MODEL = process.env.BEDROCK_SCORER_MODEL ?? "us.anthropic.claude-haiku-4-5-20251001-v1:0";
@@ -93770,25 +93810,26 @@ ${issue3.body}`;
 
 ${issue3.repoContext}` : base;
 }
-async function scoreReadiness(issue3) {
+async function assessIssue(issue3) {
   const grounded = Boolean(issue3.repoContext);
   const response = await getClient().messages.parse({
     model: MODEL,
     max_tokens: 2048,
-    system: grounded ? `${READINESS_RUBRIC}
-${GROUNDING_RUBRIC}` : READINESS_RUBRIC,
+    system: grounded ? `${DELEGATION_RUBRIC}
+${GROUNDING_RUBRIC}` : DELEGATION_RUBRIC,
     messages: [{ role: "user", content: userContent(issue3) }],
     output_config: {
-      format: zodOutputFormat(grounded ? GroundedReadinessSchema : ReadinessSchema)
+      format: zodOutputFormat(grounded ? GroundedDelegationSchema : DelegationSchema)
     }
   });
   if (!response.parsed_output) {
-    throw new Error("Readiness scorer returned no parsed output");
+    throw new Error("Assessment returned no parsed output");
   }
-  return deriveReadinessResult(response.parsed_output);
+  return deriveAssessment(response.parsed_output);
 }
 
 // src/index.ts
+var import_node_crypto9 = require("node:crypto");
 var LABELS = {
   ready: {
     name: "agent-ready",
@@ -93804,10 +93845,20 @@ var LABELS = {
     name: "not-in-codebase",
     color: "b60205",
     description: "Describes files or symbols that don't exist in this repository."
+  },
+  needsHuman: {
+    name: "needs-human",
+    color: "5319e7",
+    description: "Well specified, but touches something an agent should not change unreviewed."
   }
 };
 var MANAGED_LABELS = Object.values(LABELS).map((l4) => l4.name);
-var MARKER = "<!-- agent-readiness -->";
+var MARKER = "<!-- agent-readiness";
+function contentHash(title, body) {
+  const normalised = `${title}
+${body}`.replace(/\s+/g, " ").trim().toLowerCase();
+  return (0, import_node_crypto9.createHash)("sha256").update(normalised).digest("hex").slice(0, 16);
+}
 function formatComment(result) {
   const suggestion = result.suggestion.trim();
   const grounding = result.grounded === false && result.groundingRationale ? `
@@ -93820,8 +93871,17 @@ function formatComment(result) {
 ${suggestion}` : header) + grounding;
   }
   if (result.score === 4) {
-    const headline = result.grounded === false ? "**Agent-readiness: 4/4 (writing) \u2014 but blocked**" : "**Agent-readiness: 4/4** \u2014 this issue looks ready for a coding agent to act on.";
-    return headline + grounding;
+    if (result.grounded === false) {
+      return "**Agent-readiness: 4/4 (writing) \u2014 but blocked**" + grounding;
+    }
+    if (result.classification === "judgement") {
+      return [
+        "**Agent-readiness: 4/4** \u2014 well specified, but this needs a human.",
+        "",
+        `_${result.judgementReason ?? "It touches something an agent should not change unreviewed."}_`
+      ].join("\n");
+    }
+    return "**Agent-readiness: 4/4** \u2014 this issue looks ready for a coding agent to act on." + grounding;
   }
   return `**Agent-readiness: ${result.score}/4**
 
@@ -93831,7 +93891,7 @@ function labelFor(result) {
   if (!result.confident) return null;
   if (result.grounded === false && result.score >= 3) return LABELS.notInCodebase.name;
   if (result.score < 4) return LABELS.needsDetail.name;
-  return LABELS.ready.name;
+  return result.classification === "mechanical" ? LABELS.ready.name : LABELS.needsHuman.name;
 }
 async function ensureLabelExists(octokit, owner, repo, name) {
   const spec = Object.values(LABELS).find((l4) => l4.name === name);
@@ -93865,10 +93925,10 @@ async function syncLabels(octokit, owner, repo, issueNumber, desired) {
     });
   }
 }
-async function upsertComment(octokit, owner, repo, issueNumber, body) {
+async function upsertComment(octokit, owner, repo, issueNumber, body, hash2) {
   const withMarker = `${body}
 
-${MARKER}`;
+${MARKER}:${hash2} -->`;
   const { data: comments } = await octokit.rest.issues.listComments({
     owner,
     repo,
@@ -93895,6 +93955,17 @@ async function run() {
   }
   const title = issue3.title ?? "";
   const body = issue3.body ?? "";
+  const hash2 = contentHash(title, body);
+  const { data: existingComments } = await octokit.rest.issues.listComments({
+    owner,
+    repo,
+    issue_number: issue3.number,
+    per_page: 100
+  });
+  if (existingComments.some((c6) => c6.body?.includes(`${MARKER}:${hash2} -->`))) {
+    info(`#${issue3.number}: content unchanged since last scoring, skipping.`);
+    return;
+  }
   const repoContext = await buildRepoContext({
     octokit,
     owner,
@@ -93905,11 +93976,11 @@ ${body}`
   if (!repoContext) {
     warning("Could not read repository context; scoring on issue text alone.");
   }
-  const result = await scoreReadiness({ title, body, repoContext: repoContext ?? void 0 });
-  await upsertComment(octokit, owner, repo, issue3.number, formatComment(result));
+  const result = await assessIssue({ title, body, repoContext: repoContext ?? void 0 });
+  await upsertComment(octokit, owner, repo, issue3.number, formatComment(result), hash2);
   await syncLabels(octokit, owner, repo, issue3.number, labelFor(result));
   info(
-    `#${issue3.number}: ${result.score}/4 confident=${result.confident} grounded=${result.grounded} label=${labelFor(result) ?? "none"}`
+    `#${issue3.number}: ${result.score}/4 confident=${result.confident} grounded=${result.grounded} class=${result.classification} label=${labelFor(result) ?? "none"}`
   );
 }
 run().catch((err) => {

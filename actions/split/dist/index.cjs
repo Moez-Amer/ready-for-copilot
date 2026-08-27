@@ -92864,6 +92864,9 @@ var DelegationSchema = ReadinessSchema.extend({
   taskPattern: SignalSchema.describe("Pass = this is a recognizable, previously-common kind of change (rename, import fix, config bump, dependency bump, test/snapshot update), not novel or design-driven work."),
   blastRadius: SignalSchema.describe("CATEGORICAL, not a risk judgment. Fail if the change touches auth, database schema/data migrations (including a 'simple' column rename), billing, public API surfaces, or adds/removes/replaces an external dependency. Simplicity is not an exemption. Sole exception: a version bump of a dependency already in use.")
 });
+var GroundedDelegationSchema = DelegationSchema.extend({
+  grounding: GroundedReadinessSchema.shape.grounding
+});
 
 // ../../packages/scorer/dist/decompose.js
 var MAX_SUB_ISSUES = 8;
@@ -93929,7 +93932,13 @@ async function classifyForDelegation(subIssue) {
 var TRIGGER = "/split";
 var MECHANICAL_LABEL = "mechanical";
 var JUDGEMENT_LABEL = "judgement";
+var AGENT_READY_LABEL = "agent-ready";
 var LABEL_SPECS = [
+  {
+    name: AGENT_READY_LABEL,
+    color: "0e8a16",
+    description: "Scored 4/4 and matches the codebase -- safe to hand to a coding agent."
+  },
   {
     name: MECHANICAL_LABEL,
     color: "0e8a16",
@@ -94177,7 +94186,7 @@ Split from #${issue3.number}.`
       owner,
       repo,
       issue_number: data.number,
-      labels: [result.classification]
+      labels: result.classification === "mechanical" ? [MECHANICAL_LABEL, AGENT_READY_LABEL] : [JUDGEMENT_LABEL]
     });
     let assignedToCopilot = false;
     if (result.classification === "mechanical" && copilotActorId) {

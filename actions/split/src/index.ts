@@ -17,7 +17,13 @@ type Octokit = ReturnType<typeof github.getOctokit>;
 const TRIGGER = "/split";
 const MECHANICAL_LABEL = "mechanical";
 const JUDGEMENT_LABEL = "judgement";
+const AGENT_READY_LABEL = "agent-ready";
 const LABEL_SPECS = [
+  {
+    name: AGENT_READY_LABEL,
+    color: "0e8a16",
+    description: "Scored 4/4 and matches the codebase -- safe to hand to a coding agent.",
+  },
   {
     name: MECHANICAL_LABEL,
     color: "0e8a16",
@@ -385,11 +391,17 @@ async function run(): Promise<void> {
     // any doubt.
     const result = await classifyForDelegation({ ...subIssue, repoContext: context });
 
+    // A mechanical sub-issue has passed the same bar the Linter applies, so it
+    // carries agent-ready too. Without it, "everything an agent can take" needs
+    // two different filters depending on which half of the tool created it.
     await octokit.rest.issues.addLabels({
       owner,
       repo,
       issue_number: data.number,
-      labels: [result.classification],
+      labels:
+        result.classification === "mechanical"
+          ? [MECHANICAL_LABEL, AGENT_READY_LABEL]
+          : [JUDGEMENT_LABEL],
     });
 
     // Pass 3 -- delegate. Mechanical goes to the agent; judgement stays

@@ -1,7 +1,8 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
 import { buildRepoContext } from "@issue-triage/repo-context";
-import { scoreReadiness, type ReadinessResult } from "@issue-triage/scorer";
+import { assessIssue, type AssessmentResult } from "@issue-triage/scorer";
+import { createHash } from "node:crypto";
 
 type Octokit = ReturnType<typeof github.getOctokit>;
 
@@ -25,14 +26,29 @@ const LABELS = {
     color: "b60205",
     description: "Describes files or symbols that don't exist in this repository.",
   },
+  needsHuman: {
+    name: "needs-human",
+    color: "5319e7",
+    description: "Well specified, but touches something an agent should not change unreviewed.",
+  },
 } as const;
 
 const MANAGED_LABELS: string[] = Object.values(LABELS).map((l) => l.name);
 
 /** Identifies this bot's own comment so re-scoring updates it in place. */
-const MARKER = "<!-- agent-readiness -->";
+const MARKER = "<!-- agent-readiness";
 
-function formatComment(result: ReadinessResult): string {
+/**
+ * Fingerprint of the content that was actually scored. Re-scoring runs on
+ * every edit, so an unchanged fingerprint means the model call can be skipped
+ * entirely -- a typo fix should not cost an inference.
+ */
+function contentHash(title: string, body: string): string {
+  const normalised = `${title}\n${body}`.replace(/\s+/g, " ").trim().toLowerCase();
+  return createHash("sha256").update(normalised).digest("hex").slice(0, 16);
+}
+
+function formatComment(result: AssessmentResult): string {
   const suggestion = result.suggestion.trim();
   // Grounding is reported separately from the score: the score is about how
   // the issue is written, grounding is about whether it is true. A 4/4 that
@@ -50,11 +66,17 @@ function formatComment(result: ReadinessResult): string {
     return (suggestion ? `${header}\n\n${suggestion}` : header) + grounding;
   }
   if (result.score === 4) {
-    const headline =
-      result.grounded === false
-        ? "**Agent-readiness: 4/4 (writing) — but blocked**"
-        : "**Agent-readiness: 4/4** — this issue looks ready for a coding agent to act on.";
-    return headline + grounding;
+    if (result.grounded === false) {
+      return "**Agent-readiness: 4/4 (writing) — but blocked**" + grounding;
+    }
+    if (result.classification === "judgement") {
+      return [
+        "**Agent-readiness: 4/4** — well specified, but this needs a human.",
+        "",
+        `_${result.judgementReason ?? "It touches something an agent should not change unreviewed."}_`,
+      ].join("\n");
+    }
+    return "**Agent-readiness: 4/4** — this issue looks ready for a coding agent to act on." + grounding;
   }
   return `**Agent-readiness: ${result.score}/4**\n\n${suggestion}${grounding}`;
 }
@@ -68,7 +90,7 @@ function formatComment(result: ReadinessResult): string {
  * reserved for the surprising case: an issue that reads as ready but describes
  * code that isn't there.
  */
-function labelFor(result: ReadinessResult): string | null {
+function labelFor(result: AssessmentResult): string | null {
   if (!result.confident) return null;
   // For a broadly well-formed issue, pointing at code that isn't there is the
   // bigger problem than any remaining detail. For a poorly-formed one it isn't:
@@ -76,7 +98,10 @@ function labelFor(result: ReadinessResult): string | null {
   // grounding failure either way.
   if (result.grounded === false && result.score >= 3) return LABELS.notInCodebase.name;
   if (result.score < 4) return LABELS.needsDetail.name;
-  return LABELS.ready.name;
+  // agent-ready has to mean safe to delegate, not merely well written. A clean
+  // 4/4 change to a secret reference is well specified and still must not go
+  // to an agent unreviewed.
+  return result.classification === "mechanical" ? LABELS.ready.name : LABELS.needsHuman.name;
 }
 
 async function ensureLabelExists(
@@ -140,8 +165,9 @@ async function upsertComment(
   repo: string,
   issueNumber: number,
   body: string,
+  hash: string,
 ): Promise<void> {
-  const withMarker = `${body}\n\n${MARKER}`;
+  const withMarker = `${body}\n\n${MARKER}:${hash} -->`;
   const { data: comments } = await octokit.rest.issues.listComments({
     owner,
     repo,
@@ -176,6 +202,21 @@ async function run(): Promise<void> {
 
   const title = issue.title ?? "";
   const body = issue.body ?? "";
+  const hash = contentHash(title, body);
+
+  // Re-scoring runs on every edit. When the meaningful content is unchanged --
+  // a reverted edit, a whitespace tweak, a duplicate event -- there is nothing
+  // new to say and no reason to pay for another inference.
+  const { data: existingComments } = await octokit.rest.issues.listComments({
+    owner,
+    repo,
+    issue_number: issue.number,
+    per_page: 100,
+  });
+  if (existingComments.some((c) => c.body?.includes(`${MARKER}:${hash} -->`))) {
+    core.info(`#${issue.number}: content unchanged since last scoring, skipping.`);
+    return;
+  }
 
   // Grounding context is best-effort: if the repo can't be read, the issue is
   // still scored on its writing, just without the reality check.
@@ -189,13 +230,13 @@ async function run(): Promise<void> {
     core.warning("Could not read repository context; scoring on issue text alone.");
   }
 
-  const result = await scoreReadiness({ title, body, repoContext: repoContext ?? undefined });
+  const result = await assessIssue({ title, body, repoContext: repoContext ?? undefined });
 
-  await upsertComment(octokit, owner, repo, issue.number, formatComment(result));
+  await upsertComment(octokit, owner, repo, issue.number, formatComment(result), hash);
   await syncLabels(octokit, owner, repo, issue.number, labelFor(result));
 
   core.info(
-    `#${issue.number}: ${result.score}/4 confident=${result.confident} grounded=${result.grounded} label=${labelFor(result) ?? "none"}`,
+    `#${issue.number}: ${result.score}/4 confident=${result.confident} grounded=${result.grounded} class=${result.classification} label=${labelFor(result) ?? "none"}`,
   );
 }
 

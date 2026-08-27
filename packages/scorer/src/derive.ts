@@ -1,6 +1,7 @@
 import {
   CONFIDENCE_THRESHOLD,
   type Delegation,
+  type GroundedDelegation,
   type GroundedReadiness,
   type Readiness,
   type Signal,
@@ -73,5 +74,35 @@ export function deriveDelegationResult(raw: Delegation): DelegationResult {
     layerAScore,
     confident,
     classification: mechanical ? "mechanical" : "judgement",
+  };
+}
+
+export interface AssessmentResult extends ReadinessResult {
+  /** Whether this is safe to hand to an agent unreviewed. */
+  classification: "mechanical" | "judgement";
+  /** Why it needs a human, when it does. */
+  judgementReason: string | null;
+}
+
+/**
+ * The full picture for one issue: how well it is written, whether it is true,
+ * and whether it is safe to delegate.
+ *
+ * The Linter needs all three. Labelling an issue agent-ready on readiness
+ * alone promised "safe for an agent" while never running the safety check --
+ * a well-written change to a secret reference scored 4/4 and earned the label.
+ */
+export function deriveAssessment(raw: GroundedDelegation | Delegation): AssessmentResult {
+  const readiness = deriveReadinessResult(raw as never);
+  const delegation = deriveDelegationResult(raw);
+  const reason = !raw.blastRadius.pass
+    ? raw.blastRadius.rationale
+    : !raw.taskPattern.pass
+      ? raw.taskPattern.rationale
+      : null;
+  return {
+    ...readiness,
+    classification: delegation.classification,
+    judgementReason: delegation.classification === "judgement" ? reason : null,
   };
 }

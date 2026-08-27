@@ -1,9 +1,21 @@
 import { AnthropicBedrock } from "@anthropic-ai/bedrock-sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { DECOMPOSE_RUBRIC, DecompositionSchema, MAX_SUB_ISSUES, type SubIssue } from "./decompose.js";
-import { deriveDelegationResult, deriveReadinessResult, type DelegationResult, type ReadinessResult } from "./derive.js";
+import {
+  deriveAssessment,
+  deriveDelegationResult,
+  deriveReadinessResult,
+  type AssessmentResult,
+  type DelegationResult,
+  type ReadinessResult,
+} from "./derive.js";
 import { DELEGATION_RUBRIC, GROUNDING_RUBRIC, READINESS_RUBRIC } from "./rubric.js";
-import { DelegationSchema, GroundedReadinessSchema, ReadinessSchema } from "./schema.js";
+import {
+  DelegationSchema,
+  GroundedDelegationSchema,
+  GroundedReadinessSchema,
+  ReadinessSchema,
+} from "./schema.js";
 
 // Served via Amazon Bedrock's classic bedrock-runtime endpoint (not Mantle --
 // Mantle turned out to have an access gap for Claude on this account that
@@ -95,4 +107,27 @@ export async function classifyForDelegation(subIssue: IssueText): Promise<Delega
     throw new Error("Delegation classifier returned no parsed output");
   }
   return deriveDelegationResult(response.parsed_output);
+}
+
+/**
+ * Score an issue on every signal at once -- readiness, grounding, and
+ * delegation safety -- in a single call. Used wherever a caller has to decide
+ * whether an issue may be handed to an agent, which readiness alone cannot
+ * answer.
+ */
+export async function assessIssue(issue: IssueText): Promise<AssessmentResult> {
+  const grounded = Boolean(issue.repoContext);
+  const response = await getClient().messages.parse({
+    model: MODEL,
+    max_tokens: 2048,
+    system: grounded ? `${DELEGATION_RUBRIC}\n${GROUNDING_RUBRIC}` : DELEGATION_RUBRIC,
+    messages: [{ role: "user", content: userContent(issue) }],
+    output_config: {
+      format: zodOutputFormat(grounded ? GroundedDelegationSchema : DelegationSchema),
+    },
+  });
+  if (!response.parsed_output) {
+    throw new Error("Assessment returned no parsed output");
+  }
+  return deriveAssessment(response.parsed_output);
 }

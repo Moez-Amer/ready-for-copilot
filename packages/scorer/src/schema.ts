@@ -58,3 +58,9 @@ export const DelegationSchema = ReadinessSchema.extend({
   ),
 });
 export type Delegation = z.infer<typeof DelegationSchema>;
+
+/** Every signal at once: readiness, delegation safety, and grounding. */
+export const GroundedDelegationSchema = DelegationSchema.extend({
+  grounding: GroundedReadinessSchema.shape.grounding,
+});
+export type GroundedDelegation = z.infer<typeof GroundedDelegationSchema>;
