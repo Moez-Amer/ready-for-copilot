@@ -92639,8 +92639,43 @@ var ReadinessSchema = external_exports.object({
 });
 var DelegationSchema = ReadinessSchema.extend({
   taskPattern: SignalSchema.describe("Pass = this is a recognizable, previously-common kind of change (rename, import fix, config bump, dependency bump, test/snapshot update), not novel or design-driven work."),
-  blastRadius: SignalSchema.describe("Pass = LOW risk: does NOT touch auth, data migrations, billing, or public API surfaces, and does not add/remove/replace an external dependency or change which external service is called. A routine version bump of a dependency already in use does not by itself fail this.")
+  blastRadius: SignalSchema.describe("CATEGORICAL, not a risk judgment. Fail if the change touches auth, database schema/data migrations (including a 'simple' column rename), billing, public API surfaces, or adds/removes/replaces an external dependency. Simplicity is not an exemption. Sole exception: a version bump of a dependency already in use.")
 });
+
+// ../../packages/scorer/dist/decompose.js
+var MAX_SUB_ISSUES = 8;
+var SubIssueSchema = external_exports.object({
+  title: external_exports.string().describe("A specific, actionable issue title. No numbering prefix."),
+  body: external_exports.string().describe("The issue body: what to change, where, and a concrete way to tell when it is done.")
+});
+var DecompositionSchema = external_exports.object({
+  subIssues: external_exports.array(SubIssueSchema).describe(`Between 3 and ${MAX_SUB_ISSUES} sub-issues covering the parent issue's scope.`)
+});
+var DECOMPOSE_RUBRIC = `You break a large, hard-to-start GitHub issue into smaller sub-issues that can each be picked up independently.
+
+Rules:
+- Propose between 3 and ${MAX_SUB_ISSUES} sub-issues. Never more than ${MAX_SUB_ISSUES}.
+- Together they should cover the parent issue's scope without overlapping each other.
+- Split along natural seams in the work (per file, per component, per step), not arbitrary slices.
+- Do not invent requirements the parent issue does not imply. If the parent is vague about something, keep that sub-issue narrow rather than guessing.
+
+Every sub-issue you write is scored against the four signals below, and a sub-issue that fails any of them cannot be handed to a coding agent. Write each one so it passes all four on its own, read without the parent issue for context:
+
+- outcome: state a concrete, checkable way to tell the work is done (a command that passes, a file that no longer contains something, a visible behaviour). "Updated to the new design" is not checkable; "renders with components from src/design-system/ and \`npm test\` passes" is.
+- scope: exactly one bounded change per sub-issue. If you catch yourself writing "and", consider splitting again.
+- context: name the actual files, directories, or components involved. Carry over every specific path the parent issue mentions into the sub-issue it belongs to. Never rely on the reader having seen the parent.
+- ambiguity: no undefined or subjective terms doing the real work ("clean up", "improve", "properly", "as needed").
+
+Write each body as a real issue body someone could act on cold, not a summary of what you did.
+
+Two habits to avoid, because they quietly make an otherwise-actionable sub-issue undelegatable:
+
+1. Catch-all preservation clauses \u2014 "preserve all existing functionality", "keep behaviour the same", "maintain current props". They sound careful but are unverifiable. If behaviour must hold, name the check that proves it instead: "\`npm test -- src/foo/\` still passes".
+2. Subjective review steps \u2014 "review each diff for regressions", "ensure nothing looks off", "verify it works properly". Replace with a concrete command, assertion, or observable state, or drop the line entirely.
+
+Also: a bullet list of five component types is five changes, not one. Either split it further, or scope that sub-issue to a single file or directory.
+
+Finally, be honest when work genuinely needs a human. Some tasks \u2014 visual design, UX judgement, API shape decisions \u2014 have no objective done-condition, and no amount of wording makes them checkable. Do not dress those up with an official-sounding but hollow criterion ("renders correctly", "looks consistent"). Write them plainly and let them be judged as they are. A sub-issue honestly marked as needing judgement is a correct outcome; one disguised as mechanical gets handed to an agent that cannot do it.`;
 
 // ../../packages/scorer/dist/derive.js
 function minConfidence(signals) {

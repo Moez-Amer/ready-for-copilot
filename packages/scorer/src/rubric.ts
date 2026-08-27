@@ -23,7 +23,14 @@ First, score the same four readiness signals as below: outcome, scope, context, 
 Then score two additional signals that are about safety, not clarity:
 
 - taskPattern: Is this a recognizable, previously-common kind of change (e.g. rename, import fix, config bump, dependency version bump, test/snapshot update) rather than novel or design-driven work? Pass = yes, it's a routine pattern.
-- blastRadius: Pass only if this change does NOT touch authentication, authorization, data migrations, billing, or public API surfaces, and does NOT add, remove, or replace an external dependency or change which external service/API is called. A routine version bump of a dependency already in use (same interface, patch/minor update) does NOT by itself fail this signal — the risk is changing what the code depends on, not maintaining an existing pinned version. Fail if it touches any of the sensitive categories above, no matter how clearly the issue is written.
+- blastRadius: This is a CATEGORICAL test, not a risk assessment. Fail it if the change touches ANY of these, regardless of how simple, routine, or low-risk the specific change seems:
+    * authentication or authorization
+    * database schema or data migrations — a schema migration is a data migration even when the change is "just" a column rename, an added index, or a default value
+    * billing or payments
+    * public API surfaces, including response shapes consumed by third parties
+    * adding, removing, or replacing an external dependency, or changing which external service is called
+  Do not reason your way past this list. "It's only a rename", "this migration is trivial", and "the interface stays the same" are not exemptions — the category is what matters, because these are the changes where an unreviewed mistake is expensive to undo.
+  One narrow exception: a routine version bump of a dependency already in use (same interface, patch/minor update) does NOT fail this signal. The risk there is changing *what* the code depends on, not maintaining an existing pin.
 
 Bias toward failing taskPattern or blastRadius when you are unsure — a false "safe" here means an agent ships an unreviewed change into something sensitive.
 

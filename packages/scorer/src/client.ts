@@ -1,5 +1,6 @@
 import { AnthropicBedrock } from "@anthropic-ai/bedrock-sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
+import { DECOMPOSE_RUBRIC, DecompositionSchema, MAX_SUB_ISSUES, type SubIssue } from "./decompose.js";
 import { deriveDelegationResult, deriveReadinessResult, type DelegationResult, type ReadinessResult } from "./derive.js";
 import { DELEGATION_RUBRIC, READINESS_RUBRIC } from "./rubric.js";
 import { DelegationSchema, ReadinessSchema } from "./schema.js";
@@ -40,6 +41,25 @@ export async function scoreReadiness(issue: IssueText): Promise<ReadinessResult>
     throw new Error("Readiness scorer returned no parsed output");
   }
   return deriveReadinessResult(response.parsed_output);
+}
+
+/**
+ * Decompose step of /split. The MAX_SUB_ISSUES cap is enforced here in code,
+ * not just requested in the prompt -- the prompt is a preference, this is the
+ * guarantee.
+ */
+export async function decomposeIssue(issue: IssueText): Promise<SubIssue[]> {
+  const response = await getClient().messages.parse({
+    model: MODEL,
+    max_tokens: 4096,
+    system: DECOMPOSE_RUBRIC,
+    messages: [{ role: "user", content: userContent(issue) }],
+    output_config: { format: zodOutputFormat(DecompositionSchema) },
+  });
+  if (!response.parsed_output) {
+    throw new Error("Decomposer returned no parsed output");
+  }
+  return response.parsed_output.subIssues.slice(0, MAX_SUB_ISSUES);
 }
 
 export async function classifyForDelegation(subIssue: IssueText): Promise<DelegationResult> {

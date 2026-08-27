@@ -39,7 +39,7 @@ export const DelegationSchema = ReadinessSchema.extend({
     "Pass = this is a recognizable, previously-common kind of change (rename, import fix, config bump, dependency bump, test/snapshot update), not novel or design-driven work.",
   ),
   blastRadius: SignalSchema.describe(
-    "Pass = LOW risk: does NOT touch auth, data migrations, billing, or public API surfaces, and does not add/remove/replace an external dependency or change which external service is called. A routine version bump of a dependency already in use does not by itself fail this.",
+    "CATEGORICAL, not a risk judgment. Fail if the change touches auth, database schema/data migrations (including a 'simple' column rename), billing, public API surfaces, or adds/removes/replaces an external dependency. Simplicity is not an exemption. Sole exception: a version bump of a dependency already in use.",
   ),
 });
 export type Delegation = z.infer<typeof DelegationSchema>;

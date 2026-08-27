@@ -1,0 +1,21 @@
+name: Issue Split
+
+on:
+  issue_comment:
+    types: [created]
+
+permissions:
+  issues: write
+  contents: read
+
+jobs:
+  split:
+    # Cheap guard so the runner only spins up for actual /split comments.
+    if: ${{ !github.event.issue.pull_request && startsWith(github.event.comment.body, '/split') }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./actions/split
+        with:
+          aws-bearer-token-bedrock: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+          aws-region: us-east-1
