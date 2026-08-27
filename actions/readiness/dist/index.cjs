@@ -92627,7 +92627,7 @@ config(en_default());
 var CONFIDENCE_THRESHOLD = 0.6;
 var SignalSchema = external_exports.object({
   pass: external_exports.boolean().describe("Whether this signal is satisfied."),
-  confidence: external_exports.number().min(0).max(1).describe("How confident the model is in this judgment, 0-1."),
+  confidence: external_exports.number().min(0).max(1).describe("How sure you are of this pass/fail call, 0-1 \u2014 NOT how good the issue is. A signal that is clearly absent is a CONFIDENT fail (0.8-1.0), not an uncertain one. Reserve low values for cases where you genuinely cannot tell either way."),
   rationale: external_exports.string().describe("One short sentence explaining the judgment.")
 });
 var ReadinessSchema = external_exports.object({
@@ -93532,7 +93532,7 @@ Score these four signals about the issue below. For each: pass/fail, a confidenc
 
 Then write one concrete rewrite suggestion aimed at whichever signal scored weakest (lowest confidence, or a fail). If all four signals clearly pass, return an empty string for the suggestion.
 
-Be honest about uncertainty: if the issue text doesn't give you enough to judge a signal confidently, reflect that with a low confidence score rather than guessing. Do not assume any information beyond what's in the title and body.`;
+On confidence: confidence measures how sure you are of the pass/fail call itself, NOT how good the issue is. An issue that plainly lacks a signal is a CONFIDENT fail \u2014 score it pass=false with high confidence (0.8-1.0). "Fix the login bug" fails all four signals confidently; it is not an uncertain case. Reserve low confidence (below 0.6) for when you genuinely cannot tell either way, such as an issue referring to files, discussions, or context you cannot see. Do not assume any information beyond what's in the title and body.`;
 
 // ../../packages/scorer/dist/client.js
 var MODEL = process.env.BEDROCK_SCORER_MODEL ?? "us.anthropic.claude-haiku-4-5-20251001-v1:0";
@@ -93565,15 +93565,19 @@ async function scoreReadiness(issue3) {
 var AGENT_READY_LABEL = "agent-ready";
 var AGENT_READY_COLOR = "0e8a16";
 function formatComment(result) {
+  const suggestion = result.suggestion.trim();
   if (!result.confident) {
-    return "I can't score this issue confidently enough to give a useful number yet \u2014 there isn't enough here for me to judge outcome, scope, context, or ambiguity with confidence.";
+    const header = "I can't score this issue confidently \u2014 there isn't enough here for me to judge it either way.";
+    return suggestion ? `${header}
+
+${suggestion}` : header;
   }
   if (result.score === 4) {
     return "**Agent-readiness: 4/4** \u2014 this issue looks ready for a coding agent to act on.";
   }
   return `**Agent-readiness: ${result.score}/4**
 
-${result.suggestion}`;
+${suggestion}`;
 }
 async function ensureLabelExists(octokit, owner, repo) {
   try {

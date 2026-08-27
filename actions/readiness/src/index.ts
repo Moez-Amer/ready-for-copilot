@@ -6,13 +6,18 @@ const AGENT_READY_LABEL = "agent-ready";
 const AGENT_READY_COLOR = "0e8a16";
 
 function formatComment(result: ReadinessResult): string {
+  const suggestion = result.suggestion.trim();
+  // The suggestion is the point of this bot -- it survives every path,
+  // including the abstain path, where a rewrite is what the author needs most.
   if (!result.confident) {
-    return "I can't score this issue confidently enough to give a useful number yet — there isn't enough here for me to judge outcome, scope, context, or ambiguity with confidence.";
+    const header =
+      "I can't score this issue confidently — there isn't enough here for me to judge it either way.";
+    return suggestion ? `${header}\n\n${suggestion}` : header;
   }
   if (result.score === 4) {
     return "**Agent-readiness: 4/4** — this issue looks ready for a coding agent to act on.";
   }
-  return `**Agent-readiness: ${result.score}/4**\n\n${result.suggestion}`;
+  return `**Agent-readiness: ${result.score}/4**\n\n${suggestion}`;
 }
 
 async function ensureLabelExists(

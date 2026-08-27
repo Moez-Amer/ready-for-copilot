@@ -8,7 +8,9 @@ export const SignalSchema = z.object({
     .number()
     .min(0)
     .max(1)
-    .describe("How confident the model is in this judgment, 0-1."),
+    .describe(
+      "How sure you are of this pass/fail call, 0-1 — NOT how good the issue is. A signal that is clearly absent is a CONFIDENT fail (0.8-1.0), not an uncertain one. Reserve low values for cases where you genuinely cannot tell either way.",
+    ),
   rationale: z.string().describe("One short sentence explaining the judgment."),
 });
 export type Signal = z.infer<typeof SignalSchema>;

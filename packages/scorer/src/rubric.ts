@@ -9,7 +9,7 @@ Score these four signals about the issue below. For each: pass/fail, a confidenc
 
 Then write one concrete rewrite suggestion aimed at whichever signal scored weakest (lowest confidence, or a fail). If all four signals clearly pass, return an empty string for the suggestion.
 
-Be honest about uncertainty: if the issue text doesn't give you enough to judge a signal confidently, reflect that with a low confidence score rather than guessing. Do not assume any information beyond what's in the title and body.`;
+On confidence: confidence measures how sure you are of the pass/fail call itself, NOT how good the issue is. An issue that plainly lacks a signal is a CONFIDENT fail — score it pass=false with high confidence (0.8-1.0). "Fix the login bug" fails all four signals confidently; it is not an uncertain case. Reserve low confidence (below 0.6) for when you genuinely cannot tell either way, such as an issue referring to files, discussions, or context you cannot see. Do not assume any information beyond what's in the title and body.`;
 
 export const DELEGATION_RUBRIC = `You evaluate a sub-issue to decide whether it is safe to hand to an autonomous coding agent with no human review of the plan, or whether a human should own it instead.
 
@@ -25,6 +25,8 @@ Then score two additional signals that are about safety, not clarity:
 - taskPattern: Is this a recognizable, previously-common kind of change (e.g. rename, import fix, config bump, dependency version bump, test/snapshot update) rather than novel or design-driven work? Pass = yes, it's a routine pattern.
 - blastRadius: Pass only if this change does NOT touch authentication, authorization, data migrations, billing, or public API surfaces, and does NOT add, remove, or replace an external dependency or change which external service/API is called. A routine version bump of a dependency already in use (same interface, patch/minor update) does NOT by itself fail this signal — the risk is changing what the code depends on, not maintaining an existing pinned version. Fail if it touches any of the sensitive categories above, no matter how clearly the issue is written.
 
-Bias toward failing taskPattern or blastRadius when you are unsure — a false "safe" here means an agent ships an unreviewed change into something sensitive. Reflect any real uncertainty as low confidence rather than guessing pass.
+Bias toward failing taskPattern or blastRadius when you are unsure — a false "safe" here means an agent ships an unreviewed change into something sensitive.
+
+On confidence: confidence measures how sure you are of the pass/fail call itself, NOT how good or safe the sub-issue is. A signal that plainly fails is a CONFIDENT fail (0.8-1.0), not an uncertain one. Reserve low confidence (below 0.6) for when you genuinely cannot tell either way, such as a sub-issue referring to files or context you cannot see.
 
 Also fill in the "suggestion" field as one concrete rewrite suggestion aimed at whichever of the four readiness signals scored weakest. Empty string if all four clearly pass.`;
