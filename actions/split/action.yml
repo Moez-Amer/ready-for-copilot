@@ -1,0 +1,17 @@
+name: "Issue Splitter"
+description: "Decomposes a big issue into sub-issues, classifies each as mechanical or judgement, and delegates the mechanical ones to the Copilot coding agent."
+inputs:
+  aws-bearer-token-bedrock:
+    description: "Bedrock long-term API key, used to run decompose and classify."
+    required: true
+  aws-region:
+    description: "AWS region for the Bedrock endpoint."
+    required: false
+    default: "us-east-1"
+  github-token:
+    description: "Token used to create sub-issues, apply labels, and assign Copilot."
+    required: false
+    default: ${{ github.token }}
+runs:
+  using: "node20"
+  main: "dist/index.cjs"

@@ -1,0 +1,43 @@
+import { z } from "zod";
+
+export const CONFIDENCE_THRESHOLD = 0.6;
+
+export const SignalSchema = z.object({
+  pass: z.boolean().describe("Whether this signal is satisfied."),
+  confidence: z
+    .number()
+    .min(0)
+    .max(1)
+    .describe("How confident the model is in this judgment, 0-1."),
+  rationale: z.string().describe("One short sentence explaining the judgment."),
+});
+export type Signal = z.infer<typeof SignalSchema>;
+
+// Layer A: is the issue well-specified enough to act on at all.
+export const ReadinessSchema = z.object({
+  outcome: SignalSchema.describe("Would you know when this issue is done?"),
+  scope: SignalSchema.describe("Is this one bounded change, not several bundled together?"),
+  context: SignalSchema.describe(
+    "Are the relevant files or reproduction steps identified in this repo (not assumed knowledge)?",
+  ),
+  ambiguity: SignalSchema.describe(
+    "Is the issue free of undefined or subjective terms doing the real work?",
+  ),
+  suggestion: z
+    .string()
+    .describe(
+      "One concrete rewrite suggestion targeting the weakest signal above. Empty string if all four signals pass.",
+    ),
+});
+export type Readiness = z.infer<typeof ReadinessSchema>;
+
+// Layer B: is it safe to delegate to an autonomous agent, independent of clarity.
+export const DelegationSchema = ReadinessSchema.extend({
+  taskPattern: SignalSchema.describe(
+    "Pass = this is a recognizable, previously-common kind of change (rename, import fix, config bump, dependency bump, test/snapshot update), not novel or design-driven work.",
+  ),
+  blastRadius: SignalSchema.describe(
+    "Pass = LOW risk: does NOT touch auth, data migrations, billing, or public API surfaces, and does not add/remove/replace an external dependency or change which external service is called. A routine version bump of a dependency already in use does not by itself fail this.",
+  ),
+});
+export type Delegation = z.infer<typeof DelegationSchema>;

@@ -1,0 +1,11 @@
+node_modules/
+*.log
+.env
+.DS_Store
+.preflight_cache/
+
+# packages/* build output is intermediate and safe to ignore. actions/*/dist
+# is the actual distributable each action ships -- GitHub Actions runs it
+# directly from the checked-out repo with no build step, so it must be
+# committed, not ignored.
+packages/*/dist/

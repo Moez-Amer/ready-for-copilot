@@ -1,0 +1,17 @@
+name: "Issue Readiness Linter"
+description: "Scores a new issue for agent-readiness and posts one suggested improvement."
+inputs:
+  aws-bearer-token-bedrock:
+    description: "Bedrock long-term API key, used to run the readiness scorer."
+    required: true
+  aws-region:
+    description: "AWS region for the Bedrock endpoint."
+    required: false
+    default: "us-east-1"
+  github-token:
+    description: "Token used to post the comment and apply the agent-ready label."
+    required: false
+    default: ${{ github.token }}
+runs:
+  using: "node20"
+  main: "dist/index.cjs"
