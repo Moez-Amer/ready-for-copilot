@@ -24284,82 +24284,99 @@ function formatDuration(hours) {
 
 // ../../packages/analytics/dist/render.js
 var LABEL_META = {
-  "agent-ready": { hue: "#1a7f37", blurb: "Well specified, real, and safe to delegate" },
-  mechanical: { hue: "#1a7f37", blurb: "Sub-issue routed to the coding agent" },
-  "needs-human": { hue: "#8250df", blurb: "Well specified, but touches something sensitive" },
-  judgement: { hue: "#8250df", blurb: "Sub-issue kept for a human" },
-  "needs-detail": { hue: "#9a6700", blurb: "Scored below 4/4" },
-  "not-in-codebase": { hue: "#cf222e", blurb: "Describes code that isn't there" },
-  "not-a-task": { hue: "#0969da", blurb: "A question or discussion, not work" }
+  "agent-ready": { hue: "#0fa336", blurb: "Specified, real, and safe to delegate" },
+  mechanical: { hue: "#0fa336", blurb: "Sub-issue routed to the coding agent" },
+  "needs-human": { hue: "#1c69d4", blurb: "Specified, but touches something sensitive" },
+  judgement: { hue: "#1c69d4", blurb: "Sub-issue kept for a human" },
+  "needs-detail": { hue: "#f4b400", blurb: "Scored below 4/4" },
+  "not-in-codebase": { hue: "#e22718", blurb: "Describes code that is not there" },
+  "not-a-task": { hue: "#7e7e7e", blurb: "A question or discussion, not work" }
 };
+var READY = "#0fa336";
+var ATTENTION = "#f4b400";
+var BLOCKED = "#e22718";
 function escapeHtml(text) {
   return text.replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 }
-function bar(stat2, max) {
-  const meta = LABEL_META[stat2.label] ?? { hue: "#57606a", blurb: "" };
-  const width = max > 0 ? Math.max(stat2.total / max * 100, stat2.total > 0 ? 2 : 0) : 0;
+var LOGO = `
+<svg class="mark" viewBox="0 0 44 20" role="img" aria-label="Relay">
+  <path d="M0 3 L9 10 L0 17 Z" fill="#ffffff"></path>
+  <rect x="13" y="0" width="1.4" height="20" fill="#3c3c3c"></rect>
+  <rect x="18.5" y="0" width="1.4" height="20" fill="#3c3c3c"></rect>
+  <path d="M24 3 L33 10 L24 17 Z" fill="none" stroke="#ffffff" stroke-width="1.4"
+        stroke-dasharray="3 2.2" stroke-linejoin="round"></path>
+</svg>`;
+var STRIPE = `<div class="stripe" aria-hidden="true"><i style="background:${READY}"></i><i style="background:${ATTENTION}"></i><i style="background:${BLOCKED}"></i></div>`;
+function statRow(stat2, max) {
+  const meta = LABEL_META[stat2.label] ?? { hue: "#7e7e7e", blurb: "" };
+  const width = max > 0 ? stat2.total / max * 100 : 0;
   return `
       <tr>
         <th scope="row">
-          <span class="chip" style="--hue:${meta.hue}">${escapeHtml(stat2.label)}</span>
-          <span class="blurb">${escapeHtml(meta.blurb)}</span>
+          <span class="swatch" style="background:${meta.hue}"></span>
+          <span class="lname">${escapeHtml(stat2.label)}</span>
+          <span class="lblurb">${escapeHtml(meta.blurb)}</span>
         </th>
-        <td class="num">${stat2.total}</td>
-        <td class="track"><span class="fill" style="width:${width.toFixed(1)}%;--hue:${meta.hue}"></span></td>
-        <td class="num">${stat2.closed}</td>
-        <td class="num">${formatDuration(stat2.medianHoursToClose)}</td>
+        <td class="n">${stat2.total}</td>
+        <td class="track"><span class="fill" style="width:${width.toFixed(1)}%;background:${meta.hue}"></span></td>
+        <td class="n">${stat2.closed}</td>
+        <td class="n">${formatDuration(stat2.medianHoursToClose)}</td>
       </tr>`;
 }
 function verdict(summary2) {
   const ready = summary2.labels.find((l) => l.label === "agent-ready");
   const detail = summary2.labels.find((l) => l.label === "needs-detail");
   if (!ready?.medianHoursToClose || !detail?.medianHoursToClose) {
-    return `<p class="verdict pending">Not enough closed issues yet to tell whether the rubric predicts anything. It needs issues closed on both sides \u2014 currently ${ready?.closed ?? 0} closed as <code>agent-ready</code> and ${detail?.closed ?? 0} as <code>needs-detail</code>.</p>`;
+    return `
+    <p class="lede">Not enough closed issues to say whether the rubric predicts anything yet.</p>
+    <p class="sub">It needs closures on both sides \u2014 currently ${ready?.closed ?? 0} closed as <b>agent-ready</b> against ${detail?.closed ?? 0} as <b>needs-detail</b>.</p>`;
   }
   const faster = ready.medianHoursToClose < detail.medianHoursToClose;
   const ratio = faster ? detail.medianHoursToClose / ready.medianHoursToClose : ready.medianHoursToClose / detail.medianHoursToClose;
-  return faster ? `<p class="verdict good">Issues scored <strong>agent-ready</strong> close about <strong>${ratio.toFixed(1)}\xD7 faster</strong> than those needing detail \u2014 ${formatDuration(ready.medianHoursToClose)} against ${formatDuration(detail.medianHoursToClose)}. The rubric is predicting something real.</p>` : `<p class="verdict bad">Issues scored <strong>agent-ready</strong> are closing <strong>${ratio.toFixed(1)}\xD7 slower</strong> than those needing detail \u2014 ${formatDuration(ready.medianHoursToClose)} against ${formatDuration(detail.medianHoursToClose)}. The rubric is not predicting what it claims to, which is worth more attention than the tool itself.</p>`;
+  return faster ? `
+    <p class="lede">Issues scored ready close <b style="color:${READY}">${ratio.toFixed(1)}\xD7 faster</b>.</p>
+    <p class="sub">${formatDuration(ready.medianHoursToClose)} against ${formatDuration(detail.medianHoursToClose)}. The rubric is predicting something real.</p>` : `
+    <p class="lede">Issues scored ready close <b style="color:${BLOCKED}">${ratio.toFixed(1)}\xD7 slower</b>.</p>
+    <p class="sub">${formatDuration(ready.medianHoursToClose)} against ${formatDuration(detail.medianHoursToClose)}. The rubric is not predicting what it claims, which deserves more attention than the tool.</p>`;
 }
 function feedbackPanel(f) {
   if (!f.measured) {
-    return `<p class="note">Label history wasn't available, so there's no way to tell whether flagged issues got fixed.</p>`;
+    return `<p class="sub">Label history was unavailable, so there is no way to tell whether flagged issues were fixed.</p>`;
   }
   if (f.flagged === 0) {
-    return `<p class="note">Nothing has been flagged as needing work yet, so there's nothing to follow up on.</p>`;
+    return `<p class="sub">Nothing has been flagged as needing work yet.</p>`;
   }
   const pct = Math.round(f.improved / f.flagged * 100);
-  const timing = f.medianHoursToImprove !== null ? ` Typically within <strong>${formatDuration(f.medianHoursToImprove)}</strong> of being flagged.` : "";
+  const hue = pct >= 50 ? READY : ATTENTION;
+  const timing = f.medianHoursToImprove !== null ? ` Median <b>${formatDuration(f.medianHoursToImprove)}</b> from flag to fix.` : "";
   return `
     <div class="funnel">
-      <div class="stage"><div class="big">${f.flagged}</div><div class="cap">flagged as not ready</div></div>
-      <div class="arrow" aria-hidden="true">\u2192</div>
-      <div class="stage"><div class="big">${f.improved}</div><div class="cap">later reached agent-ready</div></div>
-      <div class="stage pct"><div class="big">${pct}%</div><div class="cap">acted on the feedback</div></div>
+      <div class="fstage"><span class="fnum">${f.flagged}</span><span class="flabel">Flagged</span></div>
+      <div class="fline" aria-hidden="true"></div>
+      <div class="fstage"><span class="fnum" style="color:${hue}">${f.improved}</span><span class="flabel">Fixed after feedback</span></div>
+      <div class="fstage fpct"><span class="fnum" style="color:${hue}">${pct}%</span><span class="flabel">Acted on</span></div>
     </div>
-    <p class="note">${pct >= 50 ? `Most flagged issues get fixed, so the comments are changing behaviour.${timing}` : `Most flagged issues are still sitting unfixed. Either the feedback isn't landing, or nobody is coming back to it.${timing}`}</p>`;
+    <p class="sub">${pct >= 50 ? `Most flagged issues get fixed, so the comments are changing behaviour.${timing}` : `Most flagged issues remain unfixed. Either the feedback is not landing, or nobody returns to it.${timing}`}</p>`;
 }
 function trendChart(buckets) {
   if (buckets.length < 2) {
-    return `<p class="note">Not enough weeks of history yet to show a trend.</p>`;
+    return `<p class="sub">Not enough weeks of history to show a trend.</p>`;
   }
   const max = Math.max(...buckets.map((b) => b.opened), 1);
   const w = 100 / buckets.length;
   const bars = buckets.map((b, i) => {
+    const x = i * w + w * 0.22;
+    const bw = w * 0.56;
     const h = b.opened / max * 100;
-    const readyH = b.ready / max * 100;
-    const x = i * w;
-    return `
-        <g>
-          <rect x="${(x + w * 0.2).toFixed(2)}" y="${(100 - h).toFixed(2)}" width="${(w * 0.6).toFixed(2)}" height="${h.toFixed(2)}" fill="var(--line)" rx="0.6"></rect>
-          <rect x="${(x + w * 0.2).toFixed(2)}" y="${(100 - readyH).toFixed(2)}" width="${(w * 0.6).toFixed(2)}" height="${readyH.toFixed(2)}" fill="#1a7f37" rx="0.6"></rect>
-        </g>`;
+    const rh = b.ready / max * 100;
+    return `<rect x="${x.toFixed(2)}" y="${(100 - h).toFixed(2)}" width="${bw.toFixed(2)}" height="${h.toFixed(2)}" fill="#262626"></rect><rect x="${x.toFixed(2)}" y="${(100 - rh).toFixed(2)}" width="${bw.toFixed(2)}" height="${rh.toFixed(2)}" fill="${READY}"></rect>`;
   }).join("");
-  const labels = buckets.map((b) => `<span>${escapeHtml(b.week.slice(5))}</span>`).join("");
   return `
     <div class="chart">
-      <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Issues opened per week, with the delegatable share highlighted">${bars}</svg>
-      <div class="xaxis">${labels}</div>
-      <p class="note"><span class="key ready"></span> reached agent-ready &nbsp; <span class="key all"></span> opened</p>
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" role="img"
+           aria-label="Issues opened per week, with the delegatable share highlighted">${bars}</svg>
+      <div class="xaxis">${buckets.map((b) => `<span>${escapeHtml(b.week.slice(5))}</span>`).join("")}</div>
+      <p class="sub"><i class="key" style="background:${READY}"></i> Reached agent-ready &nbsp;&nbsp; <i class="key" style="background:#262626"></i> Opened</p>
     </div>`;
 }
 function renderReport(summary2, repo) {
@@ -24370,101 +24387,192 @@ function renderReport(summary2, repo) {
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Issue readiness \u2014 ${escapeHtml(repo)}</title>
+<title>Relay \u2014 ${escapeHtml(repo)}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@300;400;500;700&family=JetBrains+Mono:wght@400;700&display=swap">
 <style>
+  /* Committed to a single dark surface, as the reference system is. Every
+     colour is painted explicitly, so the page holds on any host background. */
   :root {
-    color-scheme: light dark;
-    --bg: #ffffff; --fg: #1f2328; --muted: #59636e;
-    --line: #d1d9e0; --panel: #f6f8fa;
-  }
-  @media (prefers-color-scheme: dark) {
-    :root { --bg: #0d1117; --fg: #e6edf3; --muted: #9198a1; --line: #3d444d; --panel: #151b23; }
+    --canvas: #000000;
+    --elevated: #262626;
+    --hairline: #3c3c3c;
+    --ink: #ffffff;
+    --body: #bbbbbb;
+    --body-strong: #e6e6e6;
+    --muted: #7e7e7e;
+    --sans: "Archivo", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    --mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
   }
   * { box-sizing: border-box; }
+  html { background: var(--canvas); }
   body {
-    margin: 0; background: var(--bg); color: var(--fg);
-    font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", system-ui, sans-serif;
+    margin: 0; background: var(--canvas); color: var(--body);
+    font-family: var(--sans); font-weight: 300; font-size: 16px; line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
   }
-  main { max-width: 62rem; margin: 0 auto; padding: 3rem 1.25rem 5rem; }
-  h1 { font-size: 1.6rem; margin: 0 0 .3rem; letter-spacing: -.01em; }
-  .sub { color: var(--muted); margin: 0 0 2.5rem; font-size: .95rem; }
-  h2 { font-size: 1.05rem; margin: 2.75rem 0 .9rem; }
-  .verdict {
-    border: 1px solid var(--line); border-left-width: 4px; border-radius: 6px;
-    padding: 1rem 1.15rem; margin: 0; background: var(--panel);
+  .wrap { max-width: 74rem; margin: 0 auto; padding: 0 24px; }
+
+  header { border-bottom: 1px solid var(--hairline); }
+  .masthead { display: flex; align-items: center; gap: 16px; height: 64px; }
+  .mark { height: 18px; width: auto; display: block; flex: none; }
+  .wordmark {
+    font-weight: 700; font-size: 14px; letter-spacing: 1.5px;
+    text-transform: uppercase; color: var(--ink);
   }
-  .verdict.good { border-left-color: #1a7f37; }
-  .verdict.bad { border-left-color: #cf222e; }
-  .verdict.pending { border-left-color: var(--muted); }
-  .cards { display: grid; gap: .85rem; grid-template-columns: repeat(auto-fit, minmax(11rem, 1fr)); margin-top: 1.25rem; }
-  .card { border: 1px solid var(--line); border-radius: 6px; padding: .9rem 1rem; background: var(--panel); }
-  .card .big { font-size: 1.85rem; font-weight: 600; letter-spacing: -.02em; font-variant-numeric: tabular-nums; }
-  .card .cap { color: var(--muted); font-size: .82rem; }
-  table { width: 100%; border-collapse: collapse; font-size: .93rem; }
-  th, td { text-align: left; padding: .6rem .5rem; border-bottom: 1px solid var(--line); vertical-align: middle; }
-  thead th { color: var(--muted); font-weight: 500; font-size: .78rem; text-transform: uppercase; letter-spacing: .04em; }
-  tbody th { font-weight: 400; }
-  .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .track { width: 34%; min-width: 6rem; }
-  .fill { display: block; height: .55rem; border-radius: 999px; background: var(--hue); min-width: 2px; }
-  .chip {
-    display: inline-block; padding: .08rem .5rem; border-radius: 999px;
-    font-size: .8rem; color: #fff; background: var(--hue); white-space: nowrap;
+  .repo {
+    margin-left: auto; font-family: var(--mono); font-size: 12px;
+    color: var(--muted); letter-spacing: .5px; text-align: right;
   }
-  .blurb { display: block; color: var(--muted); font-size: .8rem; margin-top: .25rem; }
-  footer { margin-top: 3rem; color: var(--muted); font-size: .82rem; }
-  code { background: var(--panel); padding: .1em .35em; border-radius: 4px; font-size: .9em; }
-  .wrap { overflow-x: auto; }
-  .note { color: var(--muted); font-size: .87rem; margin: .9rem 0 0; }
-  .funnel { display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; margin-top: 1.1rem; }
-  .stage { border: 1px solid var(--line); border-radius: 6px; padding: .8rem 1.1rem; background: var(--panel); min-width: 8.5rem; }
-  .stage .big { font-size: 1.6rem; font-weight: 600; font-variant-numeric: tabular-nums; }
-  .stage .cap { color: var(--muted); font-size: .8rem; }
-  .stage.pct { margin-left: auto; }
-  .arrow { color: var(--muted); font-size: 1.2rem; }
-  .chart { margin-top: 1.1rem; }
-  .chart svg { width: 100%; height: 8rem; display: block; }
-  .xaxis { display: flex; margin-top: .35rem; color: var(--muted); font-size: .72rem; }
+  .stripe { display: flex; height: 4px; }
+  .stripe i { flex: 1; }
+
+  .hero { padding: 96px 0 64px; }
+  h1 {
+    font-weight: 700; font-size: clamp(40px, 7vw, 80px); line-height: 1;
+    letter-spacing: -.5px; text-transform: uppercase; color: var(--ink);
+    margin: 0 0 40px; text-wrap: balance;
+  }
+  .lede {
+    font-size: clamp(20px, 2.4vw, 32px); font-weight: 400; line-height: 1.25;
+    color: var(--body-strong); margin: 0 0 12px; max-width: 32ch;
+  }
+  .lede b { font-weight: 700; }
+  .sub { color: var(--muted); font-size: 14px; margin: 0; max-width: 66ch; }
+  .sub b { color: var(--body-strong); font-weight: 500; }
+
+  .figures {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+    border-top: 1px solid var(--hairline);
+  }
+  .figure { padding: 40px 0 40px 24px; border-left: 1px solid var(--hairline); }
+  .figure:first-child { padding-left: 0; border-left: 0; }
+  .fig-n {
+    display: block; font-family: var(--mono); font-weight: 700;
+    font-size: 40px; line-height: 1; color: var(--ink);
+    font-variant-numeric: tabular-nums;
+  }
+  .fig-l {
+    display: block; margin-top: 12px; font-size: 12px; font-weight: 700;
+    letter-spacing: 1.5px; text-transform: uppercase; color: var(--muted);
+  }
+
+  section { padding: 64px 0; border-top: 1px solid var(--hairline); }
+  h2 {
+    font-size: 14px; font-weight: 700; letter-spacing: 1.5px;
+    text-transform: uppercase; color: var(--ink); margin: 0 0 24px;
+  }
+
+  .funnel { display: flex; align-items: center; gap: 24px; flex-wrap: wrap; margin-bottom: 24px; }
+  .fstage { display: flex; flex-direction: column; gap: 8px; }
+  .fnum {
+    font-family: var(--mono); font-weight: 700; font-size: 32px; line-height: 1;
+    color: var(--ink); font-variant-numeric: tabular-nums;
+  }
+  .flabel {
+    font-size: 12px; font-weight: 700; letter-spacing: 1.5px;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .fline { flex: 0 0 64px; height: 1px; background: var(--hairline); }
+  .fpct { margin-left: auto; text-align: right; }
+
+  .chart svg { width: 100%; height: 160px; display: block; }
+  .xaxis {
+    display: flex; margin: 8px 0 16px; padding-top: 8px;
+    border-top: 1px solid var(--hairline);
+    font-family: var(--mono); font-size: 11px; color: var(--muted);
+  }
   .xaxis span { flex: 1; text-align: center; }
-  .key { display: inline-block; width: .7rem; height: .7rem; border-radius: 2px; vertical-align: -1px; }
-  .key.ready { background: #1a7f37; }
-  .key.all { background: var(--line); }
+  .key { display: inline-block; width: 10px; height: 10px; vertical-align: -1px; }
+
+  .scroll { overflow-x: auto; }
+  table { width: 100%; border-collapse: collapse; min-width: 34rem; }
+  thead th {
+    text-align: left; padding: 0 12px 12px 0; border-bottom: 1px solid var(--hairline);
+    font-size: 11px; font-weight: 700; letter-spacing: 1.5px;
+    text-transform: uppercase; color: var(--muted);
+  }
+  tbody th, tbody td {
+    padding: 20px 12px 20px 0; border-bottom: 1px solid var(--elevated);
+    vertical-align: middle; font-weight: 300;
+  }
+  tbody th { text-align: left; position: relative; padding-left: 22px; }
+  .swatch { position: absolute; left: 0; top: 24px; width: 10px; height: 10px; }
+  .lname { display: block; font-family: var(--mono); font-size: 13px; color: var(--ink); }
+  .lblurb { display: block; margin-top: 4px; font-size: 12px; color: var(--muted); }
+  .n {
+    text-align: right; font-family: var(--mono); font-size: 14px;
+    color: var(--body-strong); font-variant-numeric: tabular-nums; white-space: nowrap;
+  }
+  .track { width: 38%; min-width: 7rem; }
+  .fill { display: block; height: 6px; min-width: 2px; }
+
+  footer {
+    border-top: 1px solid var(--hairline); padding: 40px 0 96px;
+    color: var(--muted); font-size: 12px; max-width: 68ch;
+  }
 </style>
 </head>
 <body>
-<main>
-  <h1>Issue readiness</h1>
-  <p class="sub">${escapeHtml(repo)} \xB7 generated ${escapeHtml(summary2.generatedAt.slice(0, 16).replace("T", " "))} UTC</p>
-
-  ${verdict(summary2)}
-
-  <div class="cards">
-    <div class="card"><div class="big">${summary2.scored}</div><div class="cap">issues scored</div></div>
-    <div class="card"><div class="big">${share === null ? "\u2014" : `${Math.round(share * 100)}%`}</div><div class="cap">of split work is delegatable</div></div>
-    <div class="card"><div class="big">${summary2.untracked}</div><div class="cap">not yet scored</div></div>
-  </div>
-
-  <h2>Does the feedback work?</h2>
-  ${feedbackPanel(summary2.feedback)}
-
-  <h2>Issues opened per week</h2>
-  ${trendChart(summary2.trend)}
-
-  <h2>Where issues land</h2>
+<header>
   <div class="wrap">
-    <table>
-      <thead>
-        <tr><th scope="col">Label</th><th scope="col" class="num">Issues</th><th scope="col"></th><th scope="col" class="num">Closed</th><th scope="col" class="num">Median to close</th></tr>
-      </thead>
-      <tbody>${summary2.labels.map((l) => bar(l, max)).join("")}
-      </tbody>
-    </table>
+    <div class="masthead">
+      ${LOGO}
+      <span class="wordmark">Relay</span>
+      <span class="repo">${escapeHtml(repo)}</span>
+    </div>
   </div>
+  ${STRIPE}
+</header>
+
+<main class="wrap">
+  <div class="hero">
+    <h1>Issue readiness</h1>
+    ${verdict(summary2)}
+  </div>
+
+  <div class="figures">
+    <div class="figure"><span class="fig-n">${summary2.scored}</span><span class="fig-l">Issues scored</span></div>
+    <div class="figure"><span class="fig-n">${share === null ? "\u2014" : `${Math.round(share * 100)}%`}</span><span class="fig-l">Split work delegatable</span></div>
+    <div class="figure"><span class="fig-n">${summary2.untracked}</span><span class="fig-l">Not yet scored</span></div>
+  </div>
+
+  <section>
+    <h2>Does the feedback work</h2>
+    ${feedbackPanel(summary2.feedback)}
+  </section>
+
+  <section>
+    <h2>Issues opened per week</h2>
+    ${trendChart(summary2.trend)}
+  </section>
+
+  <section>
+    <h2>Where issues land</h2>
+    <div class="scroll">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Label</th>
+            <th scope="col" class="n">Issues</th>
+            <th scope="col"></th>
+            <th scope="col" class="n">Closed</th>
+            <th scope="col" class="n">Median</th>
+          </tr>
+        </thead>
+        <tbody>${summary2.labels.map((l) => statRow(l, max)).join("")}
+        </tbody>
+      </table>
+    </div>
+  </section>
 
   <footer>
-    Median time-to-close covers closed issues only, so a label with few
-    closures shows a noisy figure. Issues opened before this tool was adopted
-    carry no label and appear only in the &ldquo;not yet scored&rdquo; count.
+    Median time-to-close counts closed issues only, so a label with few closures
+    shows a noisy figure. Issues opened before Relay was adopted carry no label
+    and appear only under &ldquo;not yet scored&rdquo;.
+    <br><br>
+    Generated ${escapeHtml(summary2.generatedAt.slice(0, 16).replace("T", " "))} UTC.
   </footer>
 </main>
 </body>
