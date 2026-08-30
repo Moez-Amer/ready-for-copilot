@@ -182,6 +182,33 @@ Then enable **Settings → Pages → Source: GitHub Actions**.
 
 > GitHub Pages is free on public repositories. Publishing from a private repository requires a paid plan — the report still generates without it, so you can upload it as a build artifact instead of deploying to Pages.
 
+### 4. A personal access token, to assign Copilot
+
+`/split` creates sub-issues and labels them fine with the default token, but the final handoff needs more: **`GITHUB_TOKEN` cannot see the Copilot coding agent as an assignable actor**, so the assignment silently degrades to leaving the issue unassigned.
+
+Create a [fine-grained token](https://github.com/settings/personal-access-tokens) with:
+
+| Setting | Value |
+|---|---|
+| Repository access | **Only select repositories** → the repository using Relay |
+| Issues | Read and write |
+| Contents | Read-only |
+
+Store it as a secret named `RELAY_TOKEN`, and pass it to the split action:
+
+```yaml
+      - uses: Moez-Amer/ready-for-copilot/actions/split@main
+        with:
+          aws-bearer-token-bedrock: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
+          github-token: ${{ secrets.RELAY_TOKEN || github.token }}
+```
+
+The fallback means the action still works without the token — it just stops short of assigning.
+
+> Repository access defaults to *Public repositories*, which cannot reach a private repo at all. Every call returns `Not Found` if that is left unchanged.
+
+> A second benefit: issues created with a personal token **do** trigger workflows, so sub-issues from `/split` also get scored by the Linter. Ones created with `GITHUB_TOKEN` do not.
+
 > **`contents: read` is not optional.** Declaring any `permissions:` block sets every unlisted scope to none, so leaving it out silently disables grounding — the actions keep working, but stop checking whether issues match your code. The only symptom is a warning in the run log: `Could not read repository context`.
 
 ## Configuration
@@ -200,8 +227,8 @@ One model call per issue opened or meaningfully edited, and one per sub-issue du
 
 ## Limitations
 
-- **Copilot assignment is unverified.** The code uses the `replaceActorsForAssignable` mutation, but it has only ever been exercised on repositories without the coding agent enabled, where it takes the graceful-degradation path: the sub-issue is labelled `mechanical` and left unassigned.
-- **Sub-issues aren't Linter-scored.** GitHub doesn't trigger workflows for actions taken with `GITHUB_TOKEN`, so issues created by `/split` don't fire the readiness workflow. They're labelled by `/split` itself instead. Supplying a PAT as `github-token` would change this.
+- **Assigning Copilot needs a personal access token.** The default `GITHUB_TOKEN` cannot see the coding agent as an assignable actor, so without one, `/split` labels mechanical sub-issues and leaves them unassigned rather than failing. See step 4 below.
+- **A personal token attributes the work to you.** Sub-issues and comments from `/split` appear under your name rather than `github-actions[bot]`. Keeping the Linter on the default token leaves its comments clearly bot-authored.
 - **Repository context is re-sent on every call.** `/split` sends the file tree once to decompose and again for each sub-issue it classifies. Prompt caching would fix this; it isn't implemented yet.
 - **Code search can be unavailable** on new or unindexed repositories. Grounding degrades to file-path checking; unverified is never treated as absent.
 
