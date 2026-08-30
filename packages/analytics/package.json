@@ -1,5 +1,5 @@
 {
-  "name": "@issue-triage/analytics",
+  "name": "@relay/analytics",
   "version": "0.0.1",
   "private": true,
   "type": "module",

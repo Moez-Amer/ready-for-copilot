@@ -1,5 +1,5 @@
 {
-  "name": "@issue-triage/action-split",
+  "name": "@relay/action-split",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -9,8 +9,8 @@
   "dependencies": {
     "@actions/core": "^3.0.1",
     "@actions/github": "^9.1.1",
-    "@issue-triage/scorer": "*",
-    "@issue-triage/repo-context": "*"
+    "@relay/scorer": "*",
+    "@relay/repo-context": "*"
   },
   "devDependencies": {
     "typescript": "^7.0.2"

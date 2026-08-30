@@ -1,12 +1,12 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
-import { buildRepoContext } from "@issue-triage/repo-context";
+import { buildRepoContext } from "@relay/repo-context";
 import {
   assessIssue,
   formatUsage,
   usageSummary,
   type AssessmentResult,
-} from "@issue-triage/scorer";
+} from "@relay/scorer";
 import { createHash } from "node:crypto";
 
 type Octokit = ReturnType<typeof github.getOctokit>;

@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { dirname } from "node:path";
 import * as core from "@actions/core";
 import * as github from "@actions/github";
-import { renderReport, summarise, type AnalysedIssue, type LabelEvent } from "@issue-triage/analytics";
+import { renderReport, summarise, type AnalysedIssue, type LabelEvent } from "@relay/analytics";
 
 async function run(): Promise<void> {
   const octokit = github.getOctokit(core.getInput("github-token", { required: true }));

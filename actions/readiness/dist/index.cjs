@@ -93884,6 +93884,8 @@ function meter(label, usage) {
   const call = recordUsage(label, usage);
   if (!call)
     return;
+  if (!process.env.RELAY_VERBOSE)
+    return;
   const cached2 = call.cacheReadTokens ? `, ${call.cacheReadTokens} cached` : "";
   console.log(`[usage] ${label}: ${call.inputTokens} in, ${call.outputTokens} out${cached2} \u2248 $${estimateCost(call).toFixed(5)}`);
 }

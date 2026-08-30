@@ -1,5 +1,5 @@
 {
-  "name": "@issue-triage/scorer",
+  "name": "@relay/scorer",
   "version": "0.0.1",
   "private": true,
   "type": "module",

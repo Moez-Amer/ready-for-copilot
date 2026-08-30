@@ -1,6 +1,6 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
-import { buildRepoContext, findDuplicate, type ExistingIssue } from "@issue-triage/repo-context";
+import { buildRepoContext, findDuplicate, type ExistingIssue } from "@relay/repo-context";
 import {
   CONFIDENCE_THRESHOLD,
   classifyForDelegation,
@@ -12,7 +12,7 @@ import {
   type DelegationResult,
   type ReadinessResult,
   type SubIssue,
-} from "@issue-triage/scorer";
+} from "@relay/scorer";
 
 type Octokit = ReturnType<typeof github.getOctokit>;
 

@@ -19,9 +19,10 @@ import {
   ReadinessSchema,
 } from "./schema.js";
 
-// Served via Amazon Bedrock's classic bedrock-runtime endpoint (not Mantle --
-// Mantle turned out to have an access gap for Claude on this account that
-// bedrock-runtime doesn't have), authenticated with the same
+// Served via Amazon Bedrock's bedrock-runtime endpoint, not the newer
+// bedrock-mantle one: Mantle refused Anthropic and OpenAI models with a
+// permission error that bedrock-runtime does not raise for the same account
+// and model. Authenticated with the same
 // AWS_BEARER_TOKEN_BEDROCK bearer key used throughout this project. The Geo:US
 // cross-region inference ID is required here since bedrock-runtime doesn't
 // support in-region inference for this model. Override via
@@ -83,6 +84,10 @@ function systemFor(rubric: string, repoContext?: string): string | Anthropic.Tex
 function meter(label: string, usage: Anthropic.Usage | undefined): void {
   const call = recordUsage(label, usage);
   if (!call) return;
+  // Per-call detail is opt-in. Callers print a per-run total, which is what
+  // most people want; the breakdown matters only when tracking down which step
+  // of a split is expensive.
+  if (!process.env.RELAY_VERBOSE) return;
   const cached = call.cacheReadTokens ? `, ${call.cacheReadTokens} cached` : "";
   console.log(
     `[usage] ${label}: ${call.inputTokens} in, ${call.outputTokens} out${cached} ` +

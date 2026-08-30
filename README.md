@@ -239,9 +239,11 @@ Every run reports what it consumed, so the cost of a scoring or a split is
 measured rather than guessed:
 
 ```
-[usage] assess: 1607 in, 267 out ≈ $0.00294
 1 model call: 1,607 in, 267 out, 0 cached — ~$0.0029
 ```
+
+Set `RELAY_VERBOSE=1` for a per-call breakdown, which is worth having when
+tracking down which step of a split is expensive.
 
 Token counts come from the API response and are exact. The money is an
 estimate: Bedrock's rates vary by region and inference profile, so set

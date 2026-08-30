@@ -1,5 +1,5 @@
 {
-  "name": "@issue-triage/action-analytics",
+  "name": "@relay/action-analytics",
   "version": "0.0.1",
   "private": true,
   "type": "module",
@@ -9,7 +9,7 @@
   "dependencies": {
     "@actions/core": "^3.0.1",
     "@actions/github": "^9.1.1",
-    "@issue-triage/analytics": "*"
+    "@relay/analytics": "*"
   },
   "devDependencies": {
     "typescript": "^7.0.2"

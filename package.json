@@ -1,5 +1,5 @@
 {
-  "name": "issue-triage-pipeline",
+  "name": "relay",
   "private": true,
   "workspaces": [
     "packages/*",

@@ -13,7 +13,7 @@ function issue(n: number, labels: string[], openHours: number | null): AnalysedI
 }
 
 describe("summarise", () => {
-  it("separates triaged issues from ones the tool never saw", () => {
+  it("separates scored issues from ones the tool never saw", () => {
     const s = summarise([issue(1, ["agent-ready"], 2), issue(2, [], null), issue(3, ["bug"], null)]);
     expect(s.scored).toBe(1);
     expect(s.untracked).toBe(2);
