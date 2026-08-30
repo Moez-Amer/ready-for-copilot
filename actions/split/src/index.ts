@@ -133,9 +133,18 @@ async function findCopilotActorId(
       }`,
       { owner, repo },
     );
-    const copilot = response.repository.suggestedActors.nodes.find(
-      (node) => node.login === "copilot-swe-agent",
-    );
+    const nodes = response.repository.suggestedActors.nodes;
+    const copilot = nodes.find((node) => node.login === "copilot-swe-agent");
+    if (!copilot) {
+      // Silence here was costing a diagnosis: the same query run with a
+      // personal token lists the agent, so knowing what this token actually
+      // sees is the difference between "not enabled" and "not permitted".
+      core.warning(
+        `Copilot coding agent not among assignable actors. This token sees: ${
+          nodes.map((n) => n.login).join(", ") || "(none)"
+        }`,
+      );
+    }
     return copilot?.id ?? null;
   } catch (err) {
     core.warning(

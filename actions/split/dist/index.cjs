@@ -94026,9 +94026,13 @@ async function findCopilotActorId(octokit, owner, repo) {
       }`,
       { owner, repo }
     );
-    const copilot = response.repository.suggestedActors.nodes.find(
-      (node) => node.login === "copilot-swe-agent"
-    );
+    const nodes6 = response.repository.suggestedActors.nodes;
+    const copilot = nodes6.find((node) => node.login === "copilot-swe-agent");
+    if (!copilot) {
+      warning(
+        `Copilot coding agent not among assignable actors. This token sees: ${nodes6.map((n3) => n3.login).join(", ") || "(none)"}`
+      );
+    }
     return copilot?.id ?? null;
   } catch (err) {
     warning(
