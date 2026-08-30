@@ -1,4 +1,4 @@
-# ready-for-copilot
+# Relay
 
 Scores GitHub issues for agent-readiness and splits big ones into sub-issues, routing the safe parts to Copilot and the rest to humans.
 
@@ -110,7 +110,7 @@ jobs:
   score:
     runs-on: ubuntu-latest
     steps:
-      - uses: Moez-Amer/ready-for-copilot/actions/readiness@main
+      - uses: Moez-Amer/relay/actions/readiness@main
         with:
           aws-bearer-token-bedrock: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
           aws-region: us-east-1
@@ -134,7 +134,7 @@ jobs:
     if: ${{ !github.event.issue.pull_request && contains(github.event.comment.body, '/split') }}
     runs-on: ubuntu-latest
     steps:
-      - uses: Moez-Amer/ready-for-copilot/actions/split@main
+      - uses: Moez-Amer/relay/actions/split@main
         with:
           aws-bearer-token-bedrock: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
           aws-region: us-east-1
@@ -167,7 +167,7 @@ jobs:
       name: github-pages
       url: ${{ steps.deploy.outputs.page_url }}
     steps:
-      - uses: Moez-Amer/ready-for-copilot/actions/analytics@main
+      - uses: Moez-Amer/relay/actions/analytics@main
         with:
           output: public/index.html
       - uses: actions/configure-pages@v5
@@ -197,7 +197,7 @@ Create a [fine-grained token](https://github.com/settings/personal-access-tokens
 Store it as a secret named `RELAY_TOKEN`, and pass it to the split action:
 
 ```yaml
-      - uses: Moez-Amer/ready-for-copilot/actions/split@main
+      - uses: Moez-Amer/relay/actions/split@main
         with:
           aws-bearer-token-bedrock: ${{ secrets.AWS_BEARER_TOKEN_BEDROCK }}
           github-token: ${{ secrets.RELAY_TOKEN || github.token }}
