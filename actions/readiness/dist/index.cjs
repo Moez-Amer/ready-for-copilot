@@ -93803,6 +93803,56 @@ On confidence: confidence measures how sure you are of the pass/fail call itself
 
 Also fill in the "suggestion" field as one concrete rewrite suggestion aimed at whichever of the four readiness signals scored weakest. Empty string if all four clearly pass.`;
 
+// ../../packages/scorer/dist/usage.js
+function rates() {
+  const input = Number(process.env.RELAY_RATE_INPUT ?? 1);
+  const output = Number(process.env.RELAY_RATE_OUTPUT ?? 5);
+  return { input, output, cacheRead: input * 0.1, cacheWrite: input * 1.25 };
+}
+function estimateCost(usage) {
+  const r6 = rates();
+  return (usage.inputTokens * r6.input + usage.outputTokens * r6.output + usage.cacheReadTokens * r6.cacheRead + usage.cacheWriteTokens * r6.cacheWrite) / 1e6;
+}
+var calls = [];
+function recordUsage(label, usage) {
+  if (!usage)
+    return null;
+  const call = {
+    label,
+    inputTokens: usage.input_tokens ?? 0,
+    outputTokens: usage.output_tokens ?? 0,
+    cacheReadTokens: usage.cache_read_input_tokens ?? 0,
+    cacheWriteTokens: usage.cache_creation_input_tokens ?? 0
+  };
+  calls.push(call);
+  return call;
+}
+function usageSummary() {
+  const r6 = rates();
+  const total = calls.reduce((acc, c6) => ({
+    calls: acc.calls + 1,
+    inputTokens: acc.inputTokens + c6.inputTokens,
+    outputTokens: acc.outputTokens + c6.outputTokens,
+    cacheReadTokens: acc.cacheReadTokens + c6.cacheReadTokens,
+    cacheWriteTokens: acc.cacheWriteTokens + c6.cacheWriteTokens,
+    estimatedCostUsd: acc.estimatedCostUsd + estimateCost(c6)
+  }), {
+    calls: 0,
+    inputTokens: 0,
+    outputTokens: 0,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    estimatedCostUsd: 0
+  });
+  const uncachedEquivalent = ((total.inputTokens + total.cacheReadTokens + total.cacheWriteTokens) * r6.input + total.outputTokens * r6.output) / 1e6;
+  return { ...total, costWithoutCacheUsd: uncachedEquivalent };
+}
+function formatUsage(summary2) {
+  const saved = summary2.costWithoutCacheUsd - summary2.estimatedCostUsd;
+  const savedNote = saved > 5e-5 ? `, saved ~$${saved.toFixed(4)} via cache` : "";
+  return `${summary2.calls} model call${summary2.calls === 1 ? "" : "s"}: ${summary2.inputTokens.toLocaleString()} in, ${summary2.outputTokens.toLocaleString()} out, ${summary2.cacheReadTokens.toLocaleString()} cached \u2014 ~$${summary2.estimatedCostUsd.toFixed(4)}${savedNote}`;
+}
+
 // ../../packages/scorer/dist/client.js
 var MODEL = process.env.BEDROCK_SCORER_MODEL ?? "us.anthropic.claude-haiku-4-5-20251001-v1:0";
 var client;
@@ -93830,14 +93880,12 @@ ${repoContext}`,
     { type: "text", text: rubric }
   ];
 }
-function logCacheUsage(label, usage) {
-  if (!usage)
+function meter(label, usage) {
+  const call = recordUsage(label, usage);
+  if (!call)
     return;
-  const written = usage.cache_creation_input_tokens ?? 0;
-  const read = usage.cache_read_input_tokens ?? 0;
-  if (written || read) {
-    console.log(`[cache] ${label}: ${read} read, ${written} written, ${usage.input_tokens} uncached`);
-  }
+  const cached2 = call.cacheReadTokens ? `, ${call.cacheReadTokens} cached` : "";
+  console.log(`[usage] ${label}: ${call.inputTokens} in, ${call.outputTokens} out${cached2} \u2248 $${estimateCost(call).toFixed(5)}`);
 }
 async function assessIssue(issue3) {
   const grounded = Boolean(issue3.repoContext);
@@ -93851,7 +93899,7 @@ ${GROUNDING_RUBRIC}` : DELEGATION_RUBRIC, issue3.repoContext),
       format: zodOutputFormat(grounded ? GroundedDelegationSchema : DelegationSchema)
     }
   });
-  logCacheUsage("assess", response.usage);
+  meter("assess", response.usage);
   if (!response.parsed_output) {
     throw new Error("Assessment returned no parsed output");
   }
@@ -94022,6 +94070,7 @@ ${body}`
   info(
     `#${issue3.number}: ${result.score}/4 confident=${result.confident} grounded=${result.grounded} class=${result.classification} label=${labelFor(result) ?? "none"}`
   );
+  info(formatUsage(usageSummary()));
 }
 run().catch((err) => {
   setFailed(err instanceof Error ? err.message : String(err));

@@ -18,3 +18,5 @@ export {
 export type { ReadinessResult, DelegationResult, AssessmentResult } from "./derive.js";
 export { scoreReadiness, classifyForDelegation, decomposeIssue, assessIssue } from "./client.js";
 export type { IssueText } from "./client.js";
+export { usageSummary, resetUsage, formatUsage, estimateCost, recordUsage } from "./usage.js";
+export type { CallUsage, UsageSummary } from "./usage.js";

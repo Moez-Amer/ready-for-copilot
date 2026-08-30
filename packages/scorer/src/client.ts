@@ -11,6 +11,7 @@ import {
   type ReadinessResult,
 } from "./derive.js";
 import { DELEGATION_RUBRIC, GROUNDING_RUBRIC, READINESS_RUBRIC } from "./rubric.js";
+import { estimateCost, recordUsage } from "./usage.js";
 import {
   DelegationSchema,
   GroundedDelegationSchema,
@@ -72,14 +73,21 @@ function systemFor(rubric: string, repoContext?: string): string | Anthropic.Tex
   ];
 }
 
-/** Surface cache effectiveness, since it is otherwise invisible. */
-function logCacheUsage(label: string, usage: Anthropic.Usage | undefined): void {
-  if (!usage) return;
-  const written = usage.cache_creation_input_tokens ?? 0;
-  const read = usage.cache_read_input_tokens ?? 0;
-  if (written || read) {
-    console.log(`[cache] ${label}: ${read} read, ${written} written, ${usage.input_tokens} uncached`);
-  }
+/**
+ * Record what a call consumed and print it.
+ *
+ * Token counts come from the response, so spend is measured per call rather
+ * than reconstructed from a monthly bill -- which is the only way to answer
+ * "what does one split cost" before adopting this.
+ */
+function meter(label: string, usage: Anthropic.Usage | undefined): void {
+  const call = recordUsage(label, usage);
+  if (!call) return;
+  const cached = call.cacheReadTokens ? `, ${call.cacheReadTokens} cached` : "";
+  console.log(
+    `[usage] ${label}: ${call.inputTokens} in, ${call.outputTokens} out${cached} ` +
+      `≈ $${estimateCost(call).toFixed(5)}`,
+  );
 }
 
 export async function scoreReadiness(issue: IssueText): Promise<ReadinessResult> {
@@ -96,7 +104,7 @@ export async function scoreReadiness(issue: IssueText): Promise<ReadinessResult>
       format: zodOutputFormat(grounded ? GroundedReadinessSchema : ReadinessSchema),
     },
   });
-  logCacheUsage("readiness", response.usage);
+  meter("readiness", response.usage);
   if (!response.parsed_output) {
     throw new Error("Readiness scorer returned no parsed output");
   }
@@ -126,7 +134,7 @@ export async function decomposeIssue(
     ],
     output_config: { format: zodOutputFormat(DecompositionSchema) },
   });
-  logCacheUsage("decompose", response.usage);
+  meter("decompose", response.usage);
   if (!response.parsed_output) {
     throw new Error("Decomposer returned no parsed output");
   }
@@ -141,7 +149,7 @@ export async function classifyForDelegation(subIssue: IssueText): Promise<Delega
     messages: [{ role: "user", content: userContent(subIssue) }],
     output_config: { format: zodOutputFormat(DelegationSchema) },
   });
-  logCacheUsage("classify", response.usage);
+  meter("classify", response.usage);
   if (!response.parsed_output) {
     throw new Error("Delegation classifier returned no parsed output");
   }
@@ -168,7 +176,7 @@ export async function assessIssue(issue: IssueText): Promise<AssessmentResult> {
       format: zodOutputFormat(grounded ? GroundedDelegationSchema : DelegationSchema),
     },
   });
-  logCacheUsage("assess", response.usage);
+  meter("assess", response.usage);
   if (!response.parsed_output) {
     throw new Error("Assessment returned no parsed output");
   }

@@ -4,6 +4,8 @@ import { buildRepoContext, findDuplicate, type ExistingIssue } from "@issue-tria
 import {
   CONFIDENCE_THRESHOLD,
   classifyForDelegation,
+  formatUsage,
+  usageSummary,
   decomposeIssue,
   MAX_SUB_ISSUES,
   scoreReadiness,
@@ -441,6 +443,10 @@ async function run(): Promise<void> {
     issue_number: issue.number,
     body: formatSummary(created, copilotActorId !== null, skipped),
   });
+
+  // One split is the most expensive thing this tool does -- a decompose plus
+  // one classify per sub-issue -- so the run says what it cost.
+  core.info(formatUsage(usageSummary()));
 }
 
 run().catch((err: unknown) => {

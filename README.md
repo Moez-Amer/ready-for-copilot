@@ -235,6 +235,19 @@ Caching needs at least 4,096 tokens to engage, so small repositories see no
 benefit — Bedrock ignores the breakpoint and charges normally rather than
 erroring.
 
+Every run reports what it consumed, so the cost of a scoring or a split is
+measured rather than guessed:
+
+```
+[usage] assess: 1607 in, 267 out ≈ $0.00294
+1 model call: 1,607 in, 267 out, 0 cached — ~$0.0029
+```
+
+Token counts come from the API response and are exact. The money is an
+estimate: Bedrock's rates vary by region and inference profile, so set
+`RELAY_RATE_INPUT` and `RELAY_RATE_OUTPUT` (dollars per million tokens) to
+match your own bill. Defaults are $1 and $5.
+
 ## Limitations
 
 - **Assigning Copilot needs a personal access token.** The default `GITHUB_TOKEN` cannot see the coding agent as an assignable actor, so without one, `/split` labels mechanical sub-issues and leaves them unassigned rather than failing. See step 4 below.

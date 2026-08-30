@@ -1,7 +1,12 @@
 import * as core from "@actions/core";
 import * as github from "@actions/github";
 import { buildRepoContext } from "@issue-triage/repo-context";
-import { assessIssue, type AssessmentResult } from "@issue-triage/scorer";
+import {
+  assessIssue,
+  formatUsage,
+  usageSummary,
+  type AssessmentResult,
+} from "@issue-triage/scorer";
 import { createHash } from "node:crypto";
 
 type Octokit = ReturnType<typeof github.getOctokit>;
@@ -249,6 +254,7 @@ async function run(): Promise<void> {
   core.info(
     `#${issue.number}: ${result.score}/4 confident=${result.confident} grounded=${result.grounded} class=${result.classification} label=${labelFor(result) ?? "none"}`,
   );
+  core.info(formatUsage(usageSummary()));
 }
 
 run().catch((err: unknown) => {
