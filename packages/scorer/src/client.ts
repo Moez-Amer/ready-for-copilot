@@ -1,4 +1,5 @@
 import { AnthropicBedrock } from "@anthropic-ai/bedrock-sdk";
+import type Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { DECOMPOSE_RUBRIC, DecompositionSchema, MAX_SUB_ISSUES, type SubIssue } from "./decompose.js";
 import {
@@ -43,10 +44,42 @@ export interface IssueText {
 }
 
 function userContent(issue: IssueText): string {
-  const base = `Title: ${issue.title}\n\nBody:\n${issue.body}`;
-  return issue.repoContext
-    ? `${base}\n\n---\n# Repository context\n\n${issue.repoContext}`
-    : base;
+  return `Title: ${issue.title}\n\nBody:\n${issue.body}`;
+}
+
+/**
+ * Build the system prompt, caching the repository context.
+ *
+ * One /split sends the same repository listing once to decompose and again for
+ * every sub-issue it classifies -- nine times over an eight-way split, for
+ * content that never changes. Caching only applies to a stable prefix, so the
+ * listing goes first, ahead of the rubric and the issue, with the breakpoint
+ * after it. Bedrock then serves it from cache on every later call in the run.
+ *
+ * Caching needs at least 4096 tokens to engage; below that Bedrock ignores the
+ * breakpoint and charges normally, so a small repository simply sees no
+ * benefit rather than an error.
+ */
+function systemFor(rubric: string, repoContext?: string): string | Anthropic.TextBlockParam[] {
+  if (!repoContext) return rubric;
+  return [
+    {
+      type: "text",
+      text: `# Repository context\n\n${repoContext}`,
+      cache_control: { type: "ephemeral" },
+    },
+    { type: "text", text: rubric },
+  ];
+}
+
+/** Surface cache effectiveness, since it is otherwise invisible. */
+function logCacheUsage(label: string, usage: Anthropic.Usage | undefined): void {
+  if (!usage) return;
+  const written = usage.cache_creation_input_tokens ?? 0;
+  const read = usage.cache_read_input_tokens ?? 0;
+  if (written || read) {
+    console.log(`[cache] ${label}: ${read} read, ${written} written, ${usage.input_tokens} uncached`);
+  }
 }
 
 export async function scoreReadiness(issue: IssueText): Promise<ReadinessResult> {
@@ -54,12 +87,16 @@ export async function scoreReadiness(issue: IssueText): Promise<ReadinessResult>
   const response = await getClient().messages.parse({
     model: MODEL,
     max_tokens: 2048,
-    system: grounded ? `${READINESS_RUBRIC}\n${GROUNDING_RUBRIC}` : READINESS_RUBRIC,
+    system: systemFor(
+      grounded ? `${READINESS_RUBRIC}\n${GROUNDING_RUBRIC}` : READINESS_RUBRIC,
+      issue.repoContext,
+    ),
     messages: [{ role: "user", content: userContent(issue) }],
     output_config: {
       format: zodOutputFormat(grounded ? GroundedReadinessSchema : ReadinessSchema),
     },
   });
+  logCacheUsage("readiness", response.usage);
   if (!response.parsed_output) {
     throw new Error("Readiness scorer returned no parsed output");
   }
@@ -78,7 +115,7 @@ export async function decomposeIssue(
   const response = await getClient().messages.parse({
     model: MODEL,
     max_tokens: 4096,
-    system: DECOMPOSE_RUBRIC,
+    system: systemFor(DECOMPOSE_RUBRIC, issue.repoContext),
     messages: [
       {
         role: "user",
@@ -89,6 +126,7 @@ export async function decomposeIssue(
     ],
     output_config: { format: zodOutputFormat(DecompositionSchema) },
   });
+  logCacheUsage("decompose", response.usage);
   if (!response.parsed_output) {
     throw new Error("Decomposer returned no parsed output");
   }
@@ -99,10 +137,11 @@ export async function classifyForDelegation(subIssue: IssueText): Promise<Delega
   const response = await getClient().messages.parse({
     model: MODEL,
     max_tokens: 2048,
-    system: DELEGATION_RUBRIC,
+    system: systemFor(DELEGATION_RUBRIC, subIssue.repoContext),
     messages: [{ role: "user", content: userContent(subIssue) }],
     output_config: { format: zodOutputFormat(DelegationSchema) },
   });
+  logCacheUsage("classify", response.usage);
   if (!response.parsed_output) {
     throw new Error("Delegation classifier returned no parsed output");
   }
@@ -120,12 +159,16 @@ export async function assessIssue(issue: IssueText): Promise<AssessmentResult> {
   const response = await getClient().messages.parse({
     model: MODEL,
     max_tokens: 2048,
-    system: grounded ? `${DELEGATION_RUBRIC}\n${GROUNDING_RUBRIC}` : DELEGATION_RUBRIC,
+    system: systemFor(
+      grounded ? `${DELEGATION_RUBRIC}\n${GROUNDING_RUBRIC}` : DELEGATION_RUBRIC,
+      issue.repoContext,
+    ),
     messages: [{ role: "user", content: userContent(issue) }],
     output_config: {
       format: zodOutputFormat(grounded ? GroundedDelegationSchema : DelegationSchema),
     },
   });
+  logCacheUsage("assess", response.usage);
   if (!response.parsed_output) {
     throw new Error("Assessment returned no parsed output");
   }

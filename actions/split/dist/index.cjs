@@ -93887,29 +93887,47 @@ function getClient() {
   return client;
 }
 function userContent(issue3) {
-  const base = `Title: ${issue3.title}
+  return `Title: ${issue3.title}
 
 Body:
 ${issue3.body}`;
-  return issue3.repoContext ? `${base}
+}
+function systemFor(rubric, repoContext) {
+  if (!repoContext)
+    return rubric;
+  return [
+    {
+      type: "text",
+      text: `# Repository context
 
----
-# Repository context
-
-${issue3.repoContext}` : base;
+${repoContext}`,
+      cache_control: { type: "ephemeral" }
+    },
+    { type: "text", text: rubric }
+  ];
+}
+function logCacheUsage(label, usage) {
+  if (!usage)
+    return;
+  const written = usage.cache_creation_input_tokens ?? 0;
+  const read = usage.cache_read_input_tokens ?? 0;
+  if (written || read) {
+    console.log(`[cache] ${label}: ${read} read, ${written} written, ${usage.input_tokens} uncached`);
+  }
 }
 async function scoreReadiness(issue3) {
   const grounded = Boolean(issue3.repoContext);
   const response = await getClient().messages.parse({
     model: MODEL,
     max_tokens: 2048,
-    system: grounded ? `${READINESS_RUBRIC}
-${GROUNDING_RUBRIC}` : READINESS_RUBRIC,
+    system: systemFor(grounded ? `${READINESS_RUBRIC}
+${GROUNDING_RUBRIC}` : READINESS_RUBRIC, issue3.repoContext),
     messages: [{ role: "user", content: userContent(issue3) }],
     output_config: {
       format: zodOutputFormat(grounded ? GroundedReadinessSchema : ReadinessSchema)
     }
   });
+  logCacheUsage("readiness", response.usage);
   if (!response.parsed_output) {
     throw new Error("Readiness scorer returned no parsed output");
   }
@@ -93919,7 +93937,7 @@ async function decomposeIssue(issue3, openIssues) {
   const response = await getClient().messages.parse({
     model: MODEL,
     max_tokens: 4096,
-    system: DECOMPOSE_RUBRIC,
+    system: systemFor(DECOMPOSE_RUBRIC, issue3.repoContext),
     messages: [
       {
         role: "user",
@@ -93933,6 +93951,7 @@ ${openIssues}` : userContent(issue3)
     ],
     output_config: { format: zodOutputFormat(DecompositionSchema) }
   });
+  logCacheUsage("decompose", response.usage);
   if (!response.parsed_output) {
     throw new Error("Decomposer returned no parsed output");
   }
@@ -93942,10 +93961,11 @@ async function classifyForDelegation(subIssue) {
   const response = await getClient().messages.parse({
     model: MODEL,
     max_tokens: 2048,
-    system: DELEGATION_RUBRIC,
+    system: systemFor(DELEGATION_RUBRIC, subIssue.repoContext),
     messages: [{ role: "user", content: userContent(subIssue) }],
     output_config: { format: zodOutputFormat(DelegationSchema) }
   });
+  logCacheUsage("classify", response.usage);
   if (!response.parsed_output) {
     throw new Error("Delegation classifier returned no parsed output");
   }

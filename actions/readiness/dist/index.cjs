@@ -93811,29 +93811,47 @@ function getClient() {
   return client;
 }
 function userContent(issue3) {
-  const base = `Title: ${issue3.title}
+  return `Title: ${issue3.title}
 
 Body:
 ${issue3.body}`;
-  return issue3.repoContext ? `${base}
+}
+function systemFor(rubric, repoContext) {
+  if (!repoContext)
+    return rubric;
+  return [
+    {
+      type: "text",
+      text: `# Repository context
 
----
-# Repository context
-
-${issue3.repoContext}` : base;
+${repoContext}`,
+      cache_control: { type: "ephemeral" }
+    },
+    { type: "text", text: rubric }
+  ];
+}
+function logCacheUsage(label, usage) {
+  if (!usage)
+    return;
+  const written = usage.cache_creation_input_tokens ?? 0;
+  const read = usage.cache_read_input_tokens ?? 0;
+  if (written || read) {
+    console.log(`[cache] ${label}: ${read} read, ${written} written, ${usage.input_tokens} uncached`);
+  }
 }
 async function assessIssue(issue3) {
   const grounded = Boolean(issue3.repoContext);
   const response = await getClient().messages.parse({
     model: MODEL,
     max_tokens: 2048,
-    system: grounded ? `${DELEGATION_RUBRIC}
-${GROUNDING_RUBRIC}` : DELEGATION_RUBRIC,
+    system: systemFor(grounded ? `${DELEGATION_RUBRIC}
+${GROUNDING_RUBRIC}` : DELEGATION_RUBRIC, issue3.repoContext),
     messages: [{ role: "user", content: userContent(issue3) }],
     output_config: {
       format: zodOutputFormat(grounded ? GroundedDelegationSchema : DelegationSchema)
     }
   });
+  logCacheUsage("assess", response.usage);
   if (!response.parsed_output) {
     throw new Error("Assessment returned no parsed output");
   }

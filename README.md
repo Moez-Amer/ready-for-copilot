@@ -223,13 +223,22 @@ The model is set by the `BEDROCK_SCORER_MODEL` environment variable, defaulting 
 
 ## Cost
 
-One model call per issue opened or meaningfully edited, and one per sub-issue during a split. On Haiku 4.5 that's a fraction of a cent per issue. The heaviest call is `/split`'s decompose step, which reads your repository's file layout.
+One model call per issue opened or meaningfully edited, and one per sub-issue during a split. On Haiku 4.5 that is a fraction of a cent per issue.
+
+The repository listing is the bulk of each request, and it is identical across
+every call in one run, so it is sent as a cached prefix. The first call in a
+run writes it; the rest read it at roughly a tenth of the cost. Measured on a
+1,200-file repository, an eight-way split pays one full send of ~16k tokens
+instead of nine.
+
+Caching needs at least 4,096 tokens to engage, so small repositories see no
+benefit — Bedrock ignores the breakpoint and charges normally rather than
+erroring.
 
 ## Limitations
 
 - **Assigning Copilot needs a personal access token.** The default `GITHUB_TOKEN` cannot see the coding agent as an assignable actor, so without one, `/split` labels mechanical sub-issues and leaves them unassigned rather than failing. See step 4 below.
 - **A personal token attributes the work to you.** Sub-issues and comments from `/split` appear under your name rather than `github-actions[bot]`. Keeping the Linter on the default token leaves its comments clearly bot-authored.
-- **Repository context is re-sent on every call.** `/split` sends the file tree once to decompose and again for each sub-issue it classifies. Prompt caching would fix this; it isn't implemented yet.
 - **Code search can be unavailable** on new or unindexed repositories. Grounding degrades to file-path checking; unverified is never treated as absent.
 
 ## Development
